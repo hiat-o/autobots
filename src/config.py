@@ -17,8 +17,9 @@ class Config:
             "fps": 30
         },
         "detection": {
-            "scale_factor": 1.1,
-            "min_neighbors": 5,
+            "use_lbp": True,  # LBP = mais rapido, Haar = mais preciso
+            "scale_factor": 1.2,
+            "min_neighbors": 4,
             "min_size": [30, 30]
         },
         "display": {
@@ -28,8 +29,9 @@ class Config:
             "rectangle_thickness": 2
         },
         "performance": {
+            "detect_width": 320,  # Resolucao de deteccao (largura)
+            "detect_height": 240,  # Resolucao de deteccao (altura)
             "frame_skip": 1,  # Processar 1 a cada N frames
-            "resize_factor": 0.75,  # 0.75 = 75% da resolucao (RPi 5 suporta mais)
             "jpeg_quality": 85,  # Qualidade JPEG para streaming (1-100)
             "use_threading": True  # Captura em thread separada
         },

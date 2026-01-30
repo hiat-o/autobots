@@ -6,9 +6,10 @@
         "fps": 30
     },
     "detection": {
-        "scale_factor": 1.2,
-        "min_neighbors": 4,
-        "min_size": [30, 30]
+        "use_lbp": false,
+        "scale_factor": 1.1,
+        "min_neighbors": 3,
+        "min_size": [20, 20]
     },
     "display": {
         "show_fps": true,
@@ -17,8 +18,9 @@
         "rectangle_thickness": 2
     },
     "performance": {
+        "detect_width": 640,
+        "detect_height": 480,
         "frame_skip": 1,
-        "resize_factor": 0.75,
         "jpeg_quality": 85,
         "use_threading": true
     },

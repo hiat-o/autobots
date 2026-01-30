@@ -3,10 +3,10 @@
 Detector de Faces via Web - Streaming MJPEG com Flask
 Acesse http://<ip-do-raspberry>:5000 no navegador
 
-Arquitetura otimizada para Raspberry Pi 5 (8GB):
-  - Fluxo unico: captura -> deteccao -> streaming
-  - Suporte a resolucoes maiores (1280x720, 1920x1080)
-  - Melhor qualidade de imagem com hardware mais potente
+Arquitetura com Threading para Raspberry Pi 5:
+  - Thread 1: Captura de frames (nao bloqueia)
+  - Thread 2: Deteccao de faces (roda em paralelo)
+  - Thread principal: Streaming MJPEG
 """
 
 import cv2
@@ -14,6 +14,7 @@ import os
 import signal
 import sys
 import time
+import threading
 from flask import Flask, Response, render_template
 from config import Config
 
@@ -21,75 +22,245 @@ from config import Config
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-def find_haarcascade():
-    """Encontra o arquivo haarcascade em diferentes instalacoes do OpenCV"""
-    cascade_file = 'haarcascade_frontalface_default.xml'
+def find_cascade(use_lbp=True):
+    """Encontra o arquivo cascade em diferentes instalacoes do OpenCV"""
+    if use_lbp:
+        cascades_to_try = [
+            ('lbpcascade_frontalface.xml', 'lbpcascades', 'LBP'),
+            ('haarcascade_frontalface_default.xml', 'haarcascades', 'Haar'),
+        ]
+    else:
+        cascades_to_try = [
+            ('haarcascade_frontalface_default.xml', 'haarcascades', 'Haar'),
+        ]
 
-    # Tenta cv2.data (pip install)
-    if hasattr(cv2, 'data'):
-        return cv2.data.haarcascades + cascade_file
+    for cascade_file, cascade_dir, cascade_type in cascades_to_try:
+        # 1. Tenta pasta local do projeto (cascades/)
+        local_path = os.path.join(BASE_DIR, 'cascades', cascade_file)
+        if os.path.exists(local_path):
+            return local_path, cascade_type
 
-    # Caminhos comuns no Raspberry Pi (apt install)
-    system_paths = [
-        '/usr/share/opencv4/haarcascades/',
-        '/usr/share/opencv/haarcascades/',
-        '/usr/local/share/opencv4/haarcascades/',
-    ]
-    for path in system_paths:
-        full_path = os.path.join(path, cascade_file)
-        if os.path.exists(full_path):
-            return full_path
+        # 2. Tenta cv2.data (pip install)
+        if hasattr(cv2, 'data'):
+            cascade_path = os.path.join(
+                os.path.dirname(cv2.data.haarcascades),
+                cascade_dir,
+                cascade_file
+            )
+            if os.path.exists(cascade_path):
+                return cascade_path, cascade_type
 
-    raise FileNotFoundError(f"Haar cascade nao encontrado: {cascade_file}")
+            cascade_path = cv2.data.haarcascades + cascade_file
+            if os.path.exists(cascade_path):
+                return cascade_path, cascade_type
+
+        # 3. Caminhos comuns no Raspberry Pi
+        system_paths = [
+            f'/usr/share/opencv4/{cascade_dir}/',
+            f'/usr/share/opencv/{cascade_dir}/',
+            f'/usr/local/share/opencv4/{cascade_dir}/',
+            '/usr/share/opencv4/haarcascades/',
+            '/usr/share/opencv/haarcascades/',
+        ]
+        for path in system_paths:
+            full_path = os.path.join(path, cascade_file)
+            if os.path.exists(full_path):
+                return full_path, cascade_type
+
+    raise FileNotFoundError("Nenhum cascade encontrado (LBP ou Haar)")
 
 
-def open_camera(camera_id, width, height, fps):
-    """Abre a camera USB com V4L2, configurando MJPG para reduzir banda USB"""
-    attempts = [
-        (f"/dev/video{camera_id}", cv2.CAP_V4L2, "V4L2 por path"),
-        (camera_id, cv2.CAP_V4L2, "V4L2 por indice"),
-        (camera_id, cv2.CAP_ANY, "backend padrao"),
-    ]
+class CameraThread:
+    """Thread para captura continua de frames"""
 
-    cap = None
-    for src, backend, desc in attempts:
-        print(f"Tentando abrir camera: {desc} ({src})...")
-        cap = cv2.VideoCapture(src, backend)
-        if cap.isOpened():
-            print(f"Camera aberta via: {desc}")
-            break
-        cap.release()
+    def __init__(self, camera_id, width, height, fps):
+        self.camera_id = camera_id
+        self.width = width
+        self.height = height
+        self.fps = fps
+
+        self.frame = None
+        self.lock = threading.Lock()
+        self.running = False
+        self.thread = None
+        self.cap = None
+
+    def start(self):
+        """Inicia a thread de captura"""
+        self.cap = self._open_camera()
+        self.running = True
+        self.thread = threading.Thread(target=self._capture_loop, daemon=True)
+        self.thread.start()
+        return self
+
+    def _open_camera(self):
+        """Abre a camera USB com V4L2"""
+        attempts = [
+            (f"/dev/video{self.camera_id}", cv2.CAP_V4L2, "V4L2 por path"),
+            (self.camera_id, cv2.CAP_V4L2, "V4L2 por indice"),
+            (self.camera_id, cv2.CAP_ANY, "backend padrao"),
+        ]
+
         cap = None
-        time.sleep(0.5)
+        for src, backend, desc in attempts:
+            print(f"Tentando abrir camera: {desc} ({src})...")
+            cap = cv2.VideoCapture(src, backend)
+            if cap.isOpened():
+                print(f"Camera aberta via: {desc}")
+                break
+            cap.release()
+            cap = None
+            time.sleep(0.3)
 
-    if cap is None:
-        raise RuntimeError(
-            f"Camera {camera_id} nao encontrada. "
-            "Execute: v4l2-ctl --list-devices"
-        )
+        if cap is None:
+            raise RuntimeError(f"Camera {self.camera_id} nao encontrada.")
 
-    # MJPG reduz banda USB e evita frames congelados
-    cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
-    cap.set(cv2.CAP_PROP_FPS, fps)
-    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        # Configurar camera
+        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
+        cap.set(cv2.CAP_PROP_FPS, self.fps)
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
-    # Descartar primeiros frames (cameras USB costumam mandar lixo no inicio)
-    for _ in range(5):
-        cap.read()
+        # Descartar primeiros frames
+        for _ in range(5):
+            cap.read()
 
-    ret, frame = cap.read()
-    if not ret:
-        cap.release()
-        raise RuntimeError("Camera aberta mas nao retornou frame")
+        actual_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        actual_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        actual_fps = cap.get(cv2.CAP_PROP_FPS)
+        print(f"Camera: {actual_w}x{actual_h} @ {actual_fps:.0f}fps")
 
-    actual_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    actual_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    actual_fps = cap.get(cv2.CAP_PROP_FPS)
-    print(f"Camera aberta: id={camera_id} {actual_w}x{actual_h} @ {actual_fps:.0f}fps")
+        return cap
 
-    return cap
+    def _capture_loop(self):
+        """Loop de captura em thread separada"""
+        while self.running:
+            ret, frame = self.cap.read()
+            if ret and frame is not None:
+                with self.lock:
+                    self.frame = frame
+
+    def read(self):
+        """Retorna o ultimo frame capturado (thread-safe)"""
+        with self.lock:
+            return self.frame.copy() if self.frame is not None else None
+
+    def stop(self):
+        """Para a thread e libera a camera"""
+        self.running = False
+        if self.thread is not None:
+            self.thread.join(timeout=1.0)
+        if self.cap is not None:
+            self.cap.release()
+
+
+class DetectorThread:
+    """Thread para deteccao de faces em paralelo"""
+
+    def __init__(self, cascade, config):
+        self.cascade = cascade
+        self.config = config
+
+        self.faces = []
+        self.fps = 0.0
+        self.lock = threading.Lock()
+        self.running = False
+        self.thread = None
+
+        self.input_frame = None
+        self.input_lock = threading.Lock()
+        self.new_frame_event = threading.Event()
+
+    def start(self):
+        """Inicia a thread de deteccao"""
+        self.running = True
+        self.thread = threading.Thread(target=self._detection_loop, daemon=True)
+        self.thread.start()
+        return self
+
+    def submit_frame(self, frame):
+        """Envia um frame para processamento"""
+        with self.input_lock:
+            self.input_frame = frame
+        self.new_frame_event.set()
+
+    def _detection_loop(self):
+        """Loop de deteccao em thread separada"""
+        fps_counter = 0
+        fps_start = time.time()
+
+        detect_width = self.config.get('performance', 'detect_width')
+        detect_height = self.config.get('performance', 'detect_height')
+        scale_factor = self.config.get('detection', 'scale_factor')
+        min_neighbors = self.config.get('detection', 'min_neighbors')
+        min_size = tuple(self.config.get('detection', 'min_size'))
+
+        while self.running:
+            # Espera novo frame (com timeout para poder sair)
+            if not self.new_frame_event.wait(timeout=0.1):
+                continue
+            self.new_frame_event.clear()
+
+            # Pega o frame
+            with self.input_lock:
+                frame = self.input_frame
+                self.input_frame = None
+
+            if frame is None:
+                continue
+
+            # Processa
+            original_h, original_w = frame.shape[:2]
+            detect_frame = cv2.resize(frame, (detect_width, detect_height))
+            gray = cv2.cvtColor(detect_frame, cv2.COLOR_BGR2GRAY)
+
+            # Ajustar min_size
+            scale = detect_width / original_w
+            scaled_min_size = (max(10, int(min_size[0] * scale)),
+                               max(10, int(min_size[1] * scale)))
+
+            detected = self.cascade.detectMultiScale(
+                gray,
+                scaleFactor=scale_factor,
+                minNeighbors=min_neighbors,
+                minSize=scaled_min_size
+            )
+
+            # Escalar coordenadas de volta
+            faces = []
+            if len(detected) > 0:
+                scale_x = original_w / detect_width
+                scale_y = original_h / detect_height
+                faces = [(int(x * scale_x), int(y * scale_y),
+                          int(w * scale_x), int(h * scale_y))
+                         for (x, y, w, h) in detected]
+
+            # Atualiza resultado (thread-safe)
+            with self.lock:
+                self.faces = faces
+
+            # Calcula FPS
+            fps_counter += 1
+            if fps_counter >= 10:
+                elapsed = time.time() - fps_start
+                if elapsed > 0:
+                    with self.lock:
+                        self.fps = fps_counter / elapsed
+                fps_counter = 0
+                fps_start = time.time()
+
+    def get_results(self):
+        """Retorna faces detectadas e FPS"""
+        with self.lock:
+            return list(self.faces), self.fps
+
+    def stop(self):
+        """Para a thread"""
+        self.running = False
+        self.new_frame_event.set()  # Desbloqueia se estiver esperando
+        if self.thread is not None:
+            self.thread.join(timeout=1.0)
 
 
 # --- Configuracao global ---
@@ -97,48 +268,22 @@ def open_camera(camera_id, width, height, fps):
 config_path = os.path.join(BASE_DIR, "config.json")
 config = Config(config_path)
 
-# Haar Cascade
-cascade_path = find_haarcascade()
+# Face Cascade
+use_lbp = config.get('detection', 'use_lbp')
+cascade_path, cascade_type = find_cascade(use_lbp=use_lbp)
 face_cascade = cv2.CascadeClassifier(cascade_path)
-print(f"Haar cascade: {cascade_path}")
+print(f"{cascade_type} cascade: {cascade_path}")
 
-# Camera
-camera = open_camera(
+# Camera Thread
+camera_thread = CameraThread(
     camera_id=config.get('camera', 'id'),
     width=config.get('camera', 'width'),
     height=config.get('camera', 'height'),
     fps=config.get('camera', 'fps')
-)
+).start()
 
-
-# --- Deteccao e Streaming (fluxo unico) ---
-
-def detect_faces(frame):
-    """Detecta faces no frame e retorna lista de coordenadas"""
-    resize_factor = config.get('performance', 'resize_factor')
-    detect_frame = frame
-
-    if resize_factor != 1.0:
-        w = int(frame.shape[1] * resize_factor)
-        h = int(frame.shape[0] * resize_factor)
-        detect_frame = cv2.resize(frame, (w, h))
-
-    gray = cv2.cvtColor(detect_frame, cv2.COLOR_BGR2GRAY)
-
-    faces = face_cascade.detectMultiScale(
-        gray,
-        scaleFactor=config.get('detection', 'scale_factor'),
-        minNeighbors=config.get('detection', 'min_neighbors'),
-        minSize=tuple(config.get('detection', 'min_size'))
-    )
-
-    # Ajustar coordenadas se houve resize
-    if resize_factor != 1.0 and len(faces) > 0:
-        faces = [(int(x/resize_factor), int(y/resize_factor),
-                 int(w/resize_factor), int(h/resize_factor))
-                for (x, y, w, h) in faces]
-
-    return faces
+# Detector Thread
+detector_thread = DetectorThread(face_cascade, config).start()
 
 
 def draw_overlay(frame, faces, fps):
@@ -161,43 +306,57 @@ def draw_overlay(frame, faces, fps):
 
 
 def generate_frames():
-    """Gerador de frames: captura -> deteccao -> encode -> streaming"""
+    """Gerador de frames para streaming MJPEG com controle de latencia"""
     jpeg_quality = config.get('performance', 'jpeg_quality')
     encode_params = [cv2.IMWRITE_JPEG_QUALITY, jpeg_quality]
     frame_skip = config.get('performance', 'frame_skip')
-
     frame_count = 0
-    fps = 0.0
-    fps_counter = 0
-    fps_start = time.time()
-    last_faces = []
+
+    # Controle de taxa para reduzir latencia
+    target_fps = 30
+    frame_time = 1.0 / target_fps
+    last_frame_time = time.time()
+
+    # FPS do streaming (diferente do FPS de deteccao)
+    stream_fps = 0.0
+    stream_fps_counter = 0
+    stream_fps_start = time.time()
 
     while True:
-        # 1. Capturar frame
-        ret, frame = camera.read()
-        if not ret or frame is None:
-            time.sleep(0.01)
+        # Controle de taxa - evita enviar frames muito rapido
+        now = time.time()
+        elapsed = now - last_frame_time
+        if elapsed < frame_time:
+            time.sleep(frame_time - elapsed)
+        last_frame_time = time.time()
+
+        # Pega frame da camera (nao bloqueia)
+        frame = camera_thread.read()
+        if frame is None:
             continue
 
         frame_count += 1
 
-        # 2. Deteccao (a cada N frames para poupar CPU)
+        # Envia para deteccao (a cada N frames)
         if frame_count % frame_skip == 0:
-            last_faces = detect_faces(frame)
-            fps_counter += 1
+            detector_thread.submit_frame(frame.copy())
 
-            # Calcular FPS real
-            if fps_counter >= 10:
-                elapsed = time.time() - fps_start
-                if elapsed > 0:
-                    fps = fps_counter / elapsed
-                fps_counter = 0
-                fps_start = time.time()
+        # Pega resultado da deteccao (nao bloqueia)
+        faces, detect_fps = detector_thread.get_results()
 
-        # 3. Desenhar overlay
-        draw_overlay(frame, last_faces, fps)
+        # Calcula FPS do streaming
+        stream_fps_counter += 1
+        if stream_fps_counter >= 30:
+            stream_elapsed = time.time() - stream_fps_start
+            if stream_elapsed > 0:
+                stream_fps = stream_fps_counter / stream_elapsed
+            stream_fps_counter = 0
+            stream_fps_start = time.time()
 
-        # 4. Codificar JPEG e enviar
+        # Desenha overlay (mostra FPS do streaming)
+        draw_overlay(frame, faces, stream_fps)
+
+        # Codifica e envia
         _, buffer = cv2.imencode('.jpg', frame, encode_params)
         yield (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
@@ -216,17 +375,24 @@ def index():
 
 @app.route('/video_feed')
 def video_feed():
-    """Endpoint de streaming MJPEG"""
-    return Response(
+    """Endpoint de streaming MJPEG com headers anti-buffering"""
+    response = Response(
         generate_frames(),
         mimetype='multipart/x-mixed-replace; boundary=frame'
     )
+    # Headers para reduzir latencia/buffering
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    response.headers['X-Accel-Buffering'] = 'no'
+    return response
 
 
 def cleanup():
-    """Libera a camera de forma segura"""
-    camera.release()
-    print("Camera liberada")
+    """Libera recursos"""
+    detector_thread.stop()
+    camera_thread.stop()
+    print("Recursos liberados")
 
 
 def main():
@@ -234,13 +400,14 @@ def main():
     port = config.get('web', 'port')
     debug = config.get('web', 'debug')
 
-    # Garantir liberacao da camera em qualquer saida
     signal.signal(signal.SIGTERM, lambda *_: (cleanup(), sys.exit(0)))
 
     print(f"\nServidor web iniciado em http://{host}:{port}")
     print(f"Acesse de outro dispositivo na rede local")
-    print(f"Resize factor: {config.get('performance', 'resize_factor')}")
+    print(f"Deteccao em: {config.get('performance', 'detect_width')}x{config.get('performance', 'detect_height')}")
     print(f"JPEG quality: {config.get('performance', 'jpeg_quality')}")
+    print(f"Frame skip: {config.get('performance', 'frame_skip')}")
+    print(f"Modo: Threading (captura + deteccao em paralelo)")
     print("Pressione Ctrl+C para encerrar\n")
 
     try:
