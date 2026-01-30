@@ -1,0 +1,30 @@
+{
+    "camera": {
+        "id": 0,
+        "width": 1280,
+        "height": 720,
+        "fps": 30
+    },
+    "detection": {
+        "scale_factor": 1.2,
+        "min_neighbors": 4,
+        "min_size": [30, 30]
+    },
+    "display": {
+        "show_fps": true,
+        "show_face_size": true,
+        "rectangle_color": [0, 255, 0],
+        "rectangle_thickness": 2
+    },
+    "performance": {
+        "frame_skip": 1,
+        "resize_factor": 0.75,
+        "jpeg_quality": 85,
+        "use_threading": true
+    },
+    "web": {
+        "host": "0.0.0.0",
+        "port": 5000,
+        "debug": false
+    }
+}

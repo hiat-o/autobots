@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mimir TCG - Face Detection</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: #1a1a2e;
+            color: #e0e0e0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        h1 {
+            font-size: 1.8rem;
+            margin-bottom: 8px;
+            color: #00ff88;
+        }
+
+        .subtitle {
+            font-size: 0.9rem;
+            color: #888;
+            margin-bottom: 20px;
+        }
+
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 16px;
+            font-size: 0.9rem;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #00ff88;
+            animation: pulse 2s infinite;
+        }
+
+        .status-dot.offline { background: #ff4444; animation: none; }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
+        .video-container {
+            border: 2px solid #333;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #000;
+            max-width: 100%;
+        }
+
+        .video-container img {
+            display: block;
+            max-width: 100%;
+            height: auto;
+        }
+
+        .info {
+            margin-top: 16px;
+            font-size: 0.85rem;
+            color: #666;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <h1>Mimir TCG - Face Detection</h1>
+    <p class="subtitle">Raspberry Pi 5 (8GB) | OpenCV Haar Cascade</p>
+
+    <div class="status">
+        <span class="status-dot" id="statusDot"></span>
+        <span id="statusText">Conectado - Stream ativo</span>
+    </div>
+
+    <div class="video-container">
+        <img src="/video_feed" alt="Video Stream" id="stream"
+             onerror="this.parentElement.style.border='2px solid #ff4444';
+                      document.getElementById('statusDot').className='status-dot offline';
+                      document.getElementById('statusText').textContent='Desconectado';">
+    </div>
+
+    <p class="info">
+        Acesse de qualquer dispositivo na rede local.
+    </p>
+</body>
+</html>

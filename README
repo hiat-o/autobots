@@ -1,0 +1,56 @@
+# Detector de Faces Embarcado
+
+Sistema de detecção de faces para Raspberry Pi 5
+
+## Hardware
+
+- **Placa:** Raspberry Pi 5
+- **Memória:** 8GB RAM
+- **Armazenamento:** 32GB SD Card
+
+## Instalação
+
+### No Mac (Desenvolvimento)
+```bash
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+### Na Raspberry Pi 5
+
+```bash
+sudo apt update
+sudo apt install python3-pip python3-venv
+sudo apt install libatlas-base-dev libhdf5-dev -y
+
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+## Uso
+```bash
+# Testar câmera
+python src/test_camera.py
+
+# Rodar detector
+python src/detector_v2.py
+
+# Rodar detector web
+python src/web_detector.py
+```
+
+## Configuração
+
+Edite `config.json` para ajustar:
+- Resolução da câmera
+- Parâmetros de detecção
+- Performance (frame skip, resize)
+
+## Performance
+
+Raspberry Pi 5 (8GB) esperado:
+- 640x480: ~25-30 FPS
+- 1280x720: ~15-20 FPS
+- 1920x1080: ~8-12 FPS
