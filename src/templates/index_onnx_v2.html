@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mimir TCG - Card Detection + Capture</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: #1a1a2e;
+            color: #e0e0e0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        h1 {
+            font-size: 1.8rem;
+            margin-bottom: 8px;
+            color: #00ff88;
+        }
+
+        .subtitle {
+            font-size: 0.9rem;
+            color: #888;
+            margin-bottom: 20px;
+        }
+
+        /* Controles */
+        .controls {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 16px;
+            align-items: center;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .control-group label {
+            font-size: 0.9rem;
+            color: #aaa;
+        }
+
+        select {
+            background: #2d2d44;
+            color: #e0e0e0;
+            border: 1px solid #444;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            min-width: 160px;
+        }
+
+        select:hover { border-color: #00ff88; }
+        select:focus {
+            outline: none;
+            border-color: #00ff88;
+            box-shadow: 0 0 0 2px rgba(0, 255, 136, 0.2);
+        }
+
+        button {
+            background: #2d2d44;
+            color: #00ff88;
+            border: 1px solid #00ff88;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        button:hover {
+            background: #00ff88;
+            color: #1a1a2e;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Botao de Captura */
+        .capture-btn {
+            background: #00ff88;
+            color: #1a1a2e;
+            border: none;
+            padding: 12px 32px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin: 16px 0;
+        }
+
+        .capture-btn:hover {
+            background: #00cc6a;
+            transform: scale(1.05);
+        }
+
+        .capture-btn:disabled {
+            background: #444;
+            color: #888;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .capture-btn.no-detection {
+            background: #555;
+            color: #888;
+            border: 1px dashed #666;
+        }
+
+        /* Status */
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 16px;
+            font-size: 0.9rem;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #00ff88;
+            animation: pulse 2s infinite;
+        }
+
+        .status-dot.offline { background: #ff4444; animation: none; }
+        .status-dot.loading { background: #ffaa00; animation: pulse 0.5s infinite; }
+        .status-dot.has-detection { background: #00ff88; animation: pulse 0.5s infinite; }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
+        /* Video Container */
+        .video-container {
+            border: 2px solid #333;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #000;
+            max-width: 100%;
+            position: relative;
+        }
+
+        .video-container.has-detection {
+            border-color: #00ff88;
+            box-shadow: 0 0 20px rgba(0, 255, 136, 0.3);
+        }
+
+        .video-container img {
+            display: block;
+            max-width: 100%;
+            height: auto;
+        }
+
+        /* Stats Panel */
+        .stats-panel {
+            display: flex;
+            gap: 20px;
+            margin-top: 16px;
+            padding: 12px 20px;
+            background: #2d2d44;
+            border-radius: 8px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .stat-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .stat-value {
+            font-size: 1.4rem;
+            font-weight: bold;
+            color: #00ff88;
+        }
+
+        .stat-label {
+            font-size: 0.75rem;
+            color: #888;
+            text-transform: uppercase;
+        }
+
+        /* Capture Result */
+        .capture-result {
+            margin-top: 16px;
+            padding: 16px;
+            background: #2d2d44;
+            border-radius: 8px;
+            display: none;
+            max-width: 400px;
+            text-align: center;
+        }
+
+        .capture-result.show { display: block; }
+
+        .capture-result.success {
+            border: 1px solid #00ff88;
+        }
+
+        .capture-result.error {
+            border: 1px solid #ff4444;
+        }
+
+        .capture-result h3 {
+            margin-bottom: 12px;
+            color: #00ff88;
+        }
+
+        .capture-result.error h3 {
+            color: #ff4444;
+        }
+
+        .capture-result img {
+            max-width: 100%;
+            border-radius: 4px;
+            margin-bottom: 8px;
+        }
+
+        .capture-info {
+            font-size: 0.85rem;
+            color: #aaa;
+        }
+
+        /* Info */
+        .info {
+            margin-top: 16px;
+            font-size: 0.85rem;
+            color: #666;
+            text-align: center;
+        }
+
+        /* Camera Config Panel */
+        .config-panel {
+            margin-top: 20px;
+            padding: 16px;
+            background: #2d2d44;
+            border-radius: 8px;
+            width: 100%;
+            max-width: 500px;
+        }
+
+        .config-panel h3 {
+            color: #00ff88;
+            margin-bottom: 16px;
+            font-size: 1rem;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .config-panel h3::after {
+            content: '▼';
+            font-size: 0.7rem;
+            transition: transform 0.2s;
+        }
+
+        .config-panel.collapsed h3::after {
+            transform: rotate(-90deg);
+        }
+
+        .config-panel.collapsed .config-content {
+            display: none;
+        }
+
+        .config-content {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .slider-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .slider-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.85rem;
+            color: #aaa;
+        }
+
+        .slider-value {
+            color: #00ff88;
+            font-weight: bold;
+        }
+
+        input[type="range"] {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 6px;
+            background: #444;
+            border-radius: 3px;
+            outline: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px;
+            height: 18px;
+            background: #00ff88;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+        }
+
+        input[type="range"]::-moz-range-thumb {
+            width: 18px;
+            height: 18px;
+            background: #00ff88;
+            border-radius: 50%;
+            cursor: pointer;
+            border: none;
+        }
+
+        /* Responsive */
+        @media (max-width: 600px) {
+            h1 { font-size: 1.4rem; }
+            .controls { flex-direction: column; }
+            .stats-panel { gap: 12px; }
+            .stat-value { font-size: 1.2rem; }
+            .capture-btn { width: 100%; }
+            .config-panel { max-width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <h1>Mimir TCG - Card Detection</h1>
+    <p class="subtitle">ONNX Runtime | Stream 640x480 | Captura HD 1280x720</p>
+
+    <div class="controls">
+        <div class="control-group">
+            <label for="cameraSelect">Camera:</label>
+            <select id="cameraSelect" onchange="changeCamera()">
+                <option value="">Carregando...</option>
+            </select>
+        </div>
+        <button onclick="refreshCameras()" id="refreshBtn">Atualizar</button>
+    </div>
+
+    <div class="status">
+        <span class="status-dot" id="statusDot"></span>
+        <span id="statusText">Conectado - Stream ativo</span>
+    </div>
+
+    <div class="video-container" id="videoContainer">
+        <img src="/video_feed" alt="Video Stream" id="stream"
+             onload="setConnected()"
+             onerror="setDisconnected()">
+    </div>
+
+    <button class="capture-btn no-detection" id="captureBtn" onclick="captureCard()" disabled>
+        Aguardando deteccao...
+    </button>
+
+    <div class="stats-panel">
+        <div class="stat-item">
+            <span class="stat-value" id="fpsValue">0</span>
+            <span class="stat-label">FPS</span>
+        </div>
+        <div class="stat-item">
+            <span class="stat-value" id="inferenceValue">0</span>
+            <span class="stat-label">Inference (ms)</span>
+        </div>
+        <div class="stat-item">
+            <span class="stat-value" id="detectionsValue">0</span>
+            <span class="stat-label">Detections</span>
+        </div>
+    </div>
+
+    <div class="capture-result" id="captureResult">
+        <h3 id="captureTitle">Captura</h3>
+        <img id="captureImage" src="" alt="Captured card">
+        <p class="capture-info" id="captureInfo"></p>
+    </div>
+
+    <div class="config-panel" id="configPanel">
+        <h3 onclick="toggleConfig()">Configuracoes da Camera</h3>
+        <div class="config-content" id="configContent">
+            <div class="slider-group">
+                <div class="slider-label">
+                    <span>White Balance</span>
+                    <span class="slider-value" id="wbValue">4500K</span>
+                </div>
+                <input type="range" id="wbSlider" min="2800" max="6500" value="4500"
+                       oninput="updateSliderValue('wb', this.value)"
+                       onchange="applyConfig()">
+            </div>
+
+            <div class="slider-group">
+                <div class="slider-label">
+                    <span>Exposure</span>
+                    <span class="slider-value" id="exposureValue">300</span>
+                </div>
+                <input type="range" id="exposureSlider" min="1" max="2000" value="300"
+                       oninput="updateSliderValue('exposure', this.value)"
+                       onchange="applyConfig()">
+            </div>
+
+            <div class="slider-group">
+                <div class="slider-label">
+                    <span>Focus</span>
+                    <span class="slider-value" id="focusValue">200</span>
+                </div>
+                <input type="range" id="focusSlider" min="100" max="500" value="200"
+                       oninput="updateSliderValue('focus', this.value)"
+                       onchange="applyConfig()">
+            </div>
+
+            <div class="slider-group">
+                <div class="slider-label">
+                    <span>Sharpness</span>
+                    <span class="slider-value" id="sharpnessValue">15</span>
+                </div>
+                <input type="range" id="sharpnessSlider" min="0" max="31" value="15"
+                       oninput="updateSliderValue('sharpness', this.value)"
+                       onchange="applyConfig()">
+            </div>
+        </div>
+    </div>
+
+    <p class="info">
+        Posicione a carta na frente da camera. Quando detectada, clique em "Capturar" para salvar.
+    </p>
+
+    <script>
+        // Estado
+        let isConnected = true;
+        let hasDetection = false;
+        let statsInterval = null;
+
+        // Elementos
+        const cameraSelect = document.getElementById('cameraSelect');
+        const statusDot = document.getElementById('statusDot');
+        const statusText = document.getElementById('statusText');
+        const refreshBtn = document.getElementById('refreshBtn');
+        const captureBtn = document.getElementById('captureBtn');
+        const videoContainer = document.getElementById('videoContainer');
+        const fpsValue = document.getElementById('fpsValue');
+        const inferenceValue = document.getElementById('inferenceValue');
+        const detectionsValue = document.getElementById('detectionsValue');
+        const captureResult = document.getElementById('captureResult');
+        const captureTitle = document.getElementById('captureTitle');
+        const captureImage = document.getElementById('captureImage');
+        const captureInfo = document.getElementById('captureInfo');
+
+        // Sliders
+        const wbSlider = document.getElementById('wbSlider');
+        const exposureSlider = document.getElementById('exposureSlider');
+        const focusSlider = document.getElementById('focusSlider');
+        const sharpnessSlider = document.getElementById('sharpnessSlider');
+        const configPanel = document.getElementById('configPanel');
+
+        // Carrega cameras e config ao iniciar
+        document.addEventListener('DOMContentLoaded', () => {
+            loadCameras();
+            loadCameraConfig();
+            startStatsUpdate();
+        });
+
+        // Toggle painel de config
+        function toggleConfig() {
+            configPanel.classList.toggle('collapsed');
+        }
+
+        // Carrega config atual da camera
+        async function loadCameraConfig() {
+            try {
+                const response = await fetch('/camera/config');
+                const config = await response.json();
+
+                wbSlider.value = config.white_balance_temp.value;
+                exposureSlider.value = config.exposure.value;
+                focusSlider.value = config.focus.value;
+                sharpnessSlider.value = config.sharpness.value;
+
+                updateSliderValue('wb', config.white_balance_temp.value);
+                updateSliderValue('exposure', config.exposure.value);
+                updateSliderValue('focus', config.focus.value);
+                updateSliderValue('sharpness', config.sharpness.value);
+            } catch (error) {
+                console.error('Erro ao carregar config:', error);
+            }
+        }
+
+        // Atualiza valor exibido do slider
+        function updateSliderValue(type, value) {
+            switch(type) {
+                case 'wb':
+                    document.getElementById('wbValue').textContent = value + 'K';
+                    break;
+                case 'exposure':
+                    document.getElementById('exposureValue').textContent = value;
+                    break;
+                case 'focus':
+                    document.getElementById('focusValue').textContent = value;
+                    break;
+                case 'sharpness':
+                    document.getElementById('sharpnessValue').textContent = value;
+                    break;
+            }
+        }
+
+        // Aplica config na camera
+        async function applyConfig() {
+            try {
+                const config = {
+                    white_balance_temp: parseInt(wbSlider.value),
+                    exposure: parseInt(exposureSlider.value),
+                    focus: parseInt(focusSlider.value),
+                    sharpness: parseInt(sharpnessSlider.value)
+                };
+
+                const response = await fetch('/camera/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(config)
+                });
+
+                const result = await response.json();
+                if (!result.success) {
+                    console.error('Erro ao aplicar config:', result.error);
+                }
+            } catch (error) {
+                console.error('Erro ao aplicar config:', error);
+            }
+        }
+
+        // Carrega lista de cameras
+        async function loadCameras() {
+            try {
+                refreshBtn.disabled = true;
+                refreshBtn.textContent = 'Carregando...';
+
+                const response = await fetch('/cameras');
+                const cameras = await response.json();
+
+                cameraSelect.innerHTML = '';
+
+                if (cameras.length === 0) {
+                    cameraSelect.innerHTML = '<option value="">Nenhuma camera</option>';
+                } else {
+                    cameras.forEach(cam => {
+                        const option = document.createElement('option');
+                        option.value = cam.id;
+                        option.textContent = `${cam.name} (${cam.resolution})`;
+                        if (cam.active) option.selected = true;
+                        cameraSelect.appendChild(option);
+                    });
+                }
+            } catch (error) {
+                console.error('Erro ao carregar cameras:', error);
+                cameraSelect.innerHTML = '<option value="">Erro</option>';
+            } finally {
+                refreshBtn.disabled = false;
+                refreshBtn.textContent = 'Atualizar';
+            }
+        }
+
+        function refreshCameras() { loadCameras(); }
+
+        // Troca camera
+        async function changeCamera() {
+            const cameraId = cameraSelect.value;
+            if (!cameraId && cameraId !== 0) return;
+
+            try {
+                setLoading();
+
+                const response = await fetch(`/camera/${cameraId}`, { method: 'POST' });
+                const result = await response.json();
+
+                if (result.success) {
+                    const stream = document.getElementById('stream');
+                    stream.src = '/video_feed?' + new Date().getTime();
+                } else {
+                    alert('Erro ao trocar camera');
+                    setDisconnected();
+                }
+            } catch (error) {
+                console.error('Erro:', error);
+                setDisconnected();
+            }
+        }
+
+        // Atualiza estatisticas
+        function startStatsUpdate() {
+            statsInterval = setInterval(async () => {
+                if (!isConnected) return;
+
+                try {
+                    const response = await fetch('/stats');
+                    const stats = await response.json();
+
+                    fpsValue.textContent = stats.fps.toFixed(1);
+                    inferenceValue.textContent = stats.inference_time.toFixed(1);
+                    detectionsValue.textContent = stats.detections;
+
+                    // Atualiza estado de deteccao
+                    updateDetectionState(stats.has_detection);
+                } catch (error) {
+                    // Ignora erros
+                }
+            }, 500);
+        }
+
+        // Atualiza UI baseado em deteccao
+        function updateDetectionState(detected) {
+            hasDetection = detected;
+
+            if (detected) {
+                captureBtn.disabled = false;
+                captureBtn.className = 'capture-btn';
+                captureBtn.textContent = 'CAPTURAR CARTA';
+                videoContainer.classList.add('has-detection');
+                statusDot.classList.add('has-detection');
+                statusText.textContent = 'Carta detectada!';
+            } else {
+                captureBtn.disabled = true;
+                captureBtn.className = 'capture-btn no-detection';
+                captureBtn.textContent = 'Aguardando deteccao...';
+                videoContainer.classList.remove('has-detection');
+                statusDot.classList.remove('has-detection');
+                if (isConnected) {
+                    statusText.textContent = 'Conectado - Stream ativo';
+                }
+            }
+        }
+
+        // Captura carta
+        async function captureCard() {
+            if (!hasDetection) return;
+
+            try {
+                captureBtn.disabled = true;
+                captureBtn.textContent = 'Capturando...';
+
+                const response = await fetch('/capture', { method: 'POST' });
+                const result = await response.json();
+
+                if (result.success) {
+                    showCaptureResult(true, result);
+                } else {
+                    showCaptureResult(false, result);
+                }
+            } catch (error) {
+                console.error('Erro na captura:', error);
+                showCaptureResult(false, { error: 'Erro de conexao' });
+            }
+        }
+
+        // Mostra resultado da captura
+        function showCaptureResult(success, data) {
+            captureResult.classList.add('show');
+
+            if (success) {
+                captureResult.className = 'capture-result show success';
+                captureTitle.textContent = 'Captura realizada!';
+                captureImage.src = data.path + '?' + new Date().getTime();
+                captureImage.style.display = 'block';
+                captureInfo.textContent = `${data.resolution} | Confianca: ${(data.confidence * 100).toFixed(1)}%`;
+            } else {
+                captureResult.className = 'capture-result show error';
+                captureTitle.textContent = 'Erro na captura';
+                captureImage.style.display = 'none';
+                captureInfo.textContent = data.error || 'Erro desconhecido';
+            }
+
+            // Esconde apos 5 segundos
+            setTimeout(() => {
+                captureResult.classList.remove('show');
+            }, 5000);
+        }
+
+        // Status handlers
+        function setConnected() {
+            isConnected = true;
+            statusDot.className = 'status-dot';
+            statusText.textContent = 'Conectado - Stream ativo';
+        }
+
+        function setDisconnected() {
+            isConnected = false;
+            hasDetection = false;
+            statusDot.className = 'status-dot offline';
+            statusText.textContent = 'Desconectado';
+            captureBtn.disabled = true;
+        }
+
+        function setLoading() {
+            statusDot.className = 'status-dot loading';
+            statusText.textContent = 'Trocando camera...';
+        }
+    </script>
+</body>
+</html>
