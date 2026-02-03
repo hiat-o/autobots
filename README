@@ -1,12 +1,67 @@
-# Detector de Faces Embarcado
+# Sort Machine TCG - MIMIR Platform
 
-Sistema de detecção de faces para Raspberry Pi 5
+Sistema de detecção e classificação de cartas TCG para Raspberry Pi 5
 
 ## Hardware
+
+### Raspberry Pi 5
 
 - **Placa:** Raspberry Pi 5
 - **Memória:** 8GB RAM
 - **Armazenamento:** 32GB SD Card
+- **OS:** Debian GNU/Linux (Kernel 6.12.47+rpt-rpi-2712)
+
+### Câmera CSI - IMX219 (8MP)
+
+- **Modelo:** SCHV 8MP Camera Module (clone IMX219)
+- **Sensor:** Sony IMX219 (10-bit RGGB)
+- **Resolução máxima:** 3280x2464 pixels (8.08 MP)
+- **Foco:** Fixo (ajuste manual girando a lente)
+- **Interface:** CSI (conectada na porta CAM0 - direita)
+- **Driver:** libcamera v0.6.0 + libpisp v1.3.0
+- **Tuning file:** `/usr/share/libcamera/ipa/rpi/pisp/imx219.json`
+
+#### Modos de captura disponíveis
+
+| Resolução   | FPS    | Formato        | Uso recomendado              |
+|-------------|--------|----------------|------------------------------|
+| 3280x2464   | 21 fps | SRGGB10_CSI2P  | Máxima qualidade, fotos      |
+| 1920x1080   | 47 fps | SRGGB10_CSI2P  | Full HD, vídeo               |
+| 1640x1232   | 41 fps | SRGGB10_CSI2P  | Preview, processamento       |
+| 640x480     | 103 fps| SRGGB10_CSI2P  | Alta velocidade, detecção    |
+
+#### Configuração no config.txt
+
+```bash
+# /boot/firmware/config.txt
+camera_auto_detect=0
+dtoverlay=imx219,cam0
+```
+
+#### Comandos úteis
+
+```bash
+# Listar câmeras
+rpicam-hello --list-cameras
+
+# Preview (5 segundos)
+rpicam-hello -t 5000
+
+# Capturar foto (resolução máxima)
+rpicam-still --zsl -o foto.jpg
+
+# Capturar foto 1080p (mais rápido)
+rpicam-still --width 1920 --height 1080 --immediate -o foto.jpg
+
+# Gravar vídeo
+rpicam-vid -t 10000 --width 1920 --height 1080 -o video.h264
+```
+
+#### Parâmetros de exposição típicos
+
+- **Exposição:** ~33ms (33251 µs)
+- **Analog Gain:** 8.0
+- **Digital Gain:** 1.0-1.02
 
 ## Instalação
 
@@ -21,24 +76,46 @@ pip install -r requirements.txt
 
 ```bash
 sudo apt update
-sudo apt install python3-pip python3-venv
+sudo apt install python3-pip python3-venv python3-picamera2 -y
 sudo apt install libatlas-base-dev libhdf5-dev -y
 
-python3 -m venv venv
+python3 -m venv venv --system-site-packages
 source venv/bin/activate
 pip install -r requirements.txt
 ```
 
+**Nota:** O flag `--system-site-packages` é necessário para acessar o Picamera2 instalado pelo sistema.
+
 ## Uso
+
+### Detector Web com Camera CSI (Recomendado para Pi 5)
+
 ```bash
+# Rodar detector web v3 (suporte a camera CSI IMX219)
+python src/web_detector_onnx_v3.py
+```
+
+Acesse `http://<ip-raspberry>:5000` no navegador.
+
+**Funcionalidades do v3:**
+
+- Suporte nativo a camera CSI via Picamera2
+- Fallback automatico para webcam USB
+- Controles de exposicao, ganho e nitidez na interface web
+- Captura em resolucao maxima (3280x2464)
+- Stream em 640x480 para deteccao rapida
+
+### Versões anteriores
+
+```bash
+# Detector web v2 (webcam USB apenas)
+python src/web_detector_onnx_v2.py
+
+# Detector web v1
+python src/web_detector.py
+
 # Testar câmera
 python src/test_camera.py
-
-# Rodar detector
-python src/detector_v2.py
-
-# Rodar detector web
-python src/web_detector.py
 ```
 
 ## Configuração
