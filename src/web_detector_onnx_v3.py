@@ -6,7 +6,7 @@ Funcionalidades:
   - Suporte a camera CSI IMX219 via Picamera2 (Raspberry Pi)
   - Fallback para webcam USB via OpenCV
   - Deteccao de cartas usando modelo ONNX
-  - Stream em 640x480 para FPS alto
+  - Stream em HD 720p (1280x720)
   - Captura em alta resolucao (ate 3280x2464)
   - Botao para capturar ROI da carta detectada
 
@@ -75,6 +75,81 @@ def sharpen_image(image: np.ndarray, amount: float = 1.0) -> np.ndarray:
     return sharpened
 
 
+def apply_gamma_correction(image: np.ndarray, gamma: float = 1.0) -> np.ndarray:
+    """Aplica correcao de gama. gamma < 1 = mais claro, gamma > 1 = mais escuro."""
+    if gamma == 1.0:
+        return image
+    inv_gamma = 1.0 / gamma
+    table = np.array([((i / 255.0) ** inv_gamma) * 255 for i in range(256)]).astype(np.uint8)
+    return cv2.LUT(image, table)
+
+
+def apply_color_brightness(image: np.ndarray, amount: float = 0.0) -> np.ndarray:
+    """Aplica brilho de cor (vibrance). amount: -1.0 a 1.0"""
+    if amount == 0.0:
+        return image
+    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV).astype(np.float32)
+    hsv[:, :, 1] = hsv[:, :, 1] * (1.0 + amount)  # Ajusta saturacao
+    hsv[:, :, 2] = hsv[:, :, 2] * (1.0 + amount * 0.3)  # Leve ajuste no brilho
+    hsv = np.clip(hsv, 0, 255).astype(np.uint8)
+    return cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+
+
+def apply_tint(image: np.ndarray, tint: float = 0.0) -> np.ndarray:
+    """Aplica tonalidade (tint). tint: -150 a 150 (verde a magenta)."""
+    if tint == 0.0:
+        return image
+    # Converte para LAB e ajusta canal 'b' (amarelo-azul) e 'a' (verde-magenta)
+    lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB).astype(np.float32)
+    # Tint positivo = magenta, negativo = verde
+    lab[:, :, 1] = lab[:, :, 1] + (tint * 0.5)  # Canal 'a'
+    lab = np.clip(lab, 0, 255).astype(np.uint8)
+    return cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+
+
+def temperature_to_rgb_gains(temperature_k: int) -> Tuple[float, float]:
+    """Converte temperatura de cor (Kelvin) para ganhos RGB (red, blue)."""
+    # Baseado em aproximacao de Tanner Helland
+    temp = temperature_k / 100.0
+
+    # Calcular Red
+    if temp <= 66:
+        red = 255
+    else:
+        red = temp - 60
+        red = 329.698727446 * (red ** -0.1332047592)
+        red = max(0, min(255, red))
+
+    # Calcular Blue
+    if temp >= 66:
+        blue = 255
+    elif temp <= 19:
+        blue = 0
+    else:
+        blue = temp - 10
+        blue = 138.5177312231 * np.log(blue) - 305.0447927307
+        blue = max(0, min(255, blue))
+
+    # Normalizar para ganhos (referencia = 6500K, neutro)
+    ref_temp = 6500 / 100.0
+    ref_red = 255 if ref_temp <= 66 else max(0, min(255, 329.698727446 * ((ref_temp - 60) ** -0.1332047592)))
+    ref_blue = 255 if ref_temp >= 66 else max(0, min(255, 138.5177312231 * np.log(ref_temp - 10) - 305.0447927307))
+
+    red_gain = (red / ref_red) if ref_red > 0 else 1.0
+    blue_gain = (blue / ref_blue) if ref_blue > 0 else 1.0
+
+    # Limitar range para Picamera2 (tipicamente 0.0 a 8.0)
+    red_gain = max(0.5, min(4.0, red_gain))
+    blue_gain = max(0.5, min(4.0, blue_gain))
+
+    return (red_gain, blue_gain)
+
+
+def iso_to_gain(iso: int) -> float:
+    """Converte valor ISO para ganho analogico. ISO 100 = gain 1.0"""
+    return iso / 100.0
+
+
 def enhance_contrast_clahe(image: np.ndarray, clip_limit: float = 2.0) -> np.ndarray:
     """Melhora contraste usando CLAHE."""
     lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
@@ -105,6 +180,111 @@ def preprocess_card_image(image: np.ndarray,
     return result
 
 
+def analyze_exposure(image: np.ndarray) -> dict:
+    """
+    Analisa a exposicao da imagem e retorna metricas.
+
+    Metricas:
+    - brightness: brilho medio (0-255), ideal entre 100-160
+    - overexposed_pct: % de pixels saturados (>250), ideal < 5%
+    - underexposed_pct: % de pixels escuros (<10), ideal < 10%
+    - status: 'ok', 'overexposed', 'underexposed'
+    """
+    # Converte para grayscale
+    if len(image.shape) == 3:
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = image
+
+    total_pixels = gray.size
+
+    # Brilho medio
+    brightness = float(np.mean(gray))
+
+    # Pixels saturados (overexposed) - valores > 250
+    overexposed_pixels = np.sum(gray > 250)
+    overexposed_pct = (overexposed_pixels / total_pixels) * 100
+
+    # Pixels muito escuros (underexposed) - valores < 10
+    underexposed_pixels = np.sum(gray < 10)
+    underexposed_pct = (underexposed_pixels / total_pixels) * 100
+
+    # Determina status
+    if overexposed_pct > 5:
+        status = 'overexposed'
+    elif underexposed_pct > 15 or brightness < 80:
+        status = 'underexposed'
+    elif brightness > 180:
+        status = 'overexposed'
+    else:
+        status = 'ok'
+
+    return {
+        'brightness': round(brightness, 1),
+        'overexposed_pct': round(overexposed_pct, 1),
+        'underexposed_pct': round(underexposed_pct, 1),
+        'status': status
+    }
+
+
+def analyze_image_quality(image: np.ndarray) -> dict:
+    """
+    Analisa metricas de qualidade da imagem para decisao de captura.
+
+    Metricas:
+    - S_std (Estabilidade): desvio padrao do canal S (saturacao) no espaco LAB
+    - S_eff (Qualidade real): media efetiva da saturacao
+    - sanity (Sanidade visual): S_mean / std(V) - razao entre saturacao e variacao de brilho
+    - color_hash (Hash): a_std + b_std - variacao de cor nos canais a e b
+    - edge_density (OCR): densidade de bordas para avaliacao de nitidez/texto
+    """
+    if image is None or image.size == 0:
+        return {
+            'S_std': 0.0,
+            'S_eff': 0.0,
+            'sanity': 0.0,
+            'color_hash': 0.0,
+            'edge_density': 0.0
+        }
+
+    # Converte para LAB
+    lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
+    L, a, b = cv2.split(lab)
+
+    # Converte para HSV para canal S (saturacao)
+    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+    H, S, V = cv2.split(hsv)
+
+    # S_std - Estabilidade (desvio padrao da saturacao)
+    S_std = float(np.std(S))
+
+    # S_eff - Qualidade real (media da saturacao)
+    S_mean = float(np.mean(S))
+    S_eff = S_mean
+
+    # Sanidade visual: S_mean / std(V)
+    V_std = float(np.std(V))
+    sanity = S_mean / V_std if V_std > 0 else 0.0
+
+    # Hash de cor: a_std + b_std
+    a_std = float(np.std(a))
+    b_std = float(np.std(b))
+    color_hash = a_std + b_std
+
+    # Edge density - densidade de bordas (para OCR)
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    edges = cv2.Canny(gray, 50, 150)
+    edge_density = float(np.sum(edges > 0)) / edges.size * 100  # Percentual
+
+    return {
+        'S_std': round(S_std, 2),
+        'S_eff': round(S_eff, 2),
+        'sanity': round(sanity, 2),
+        'color_hash': round(color_hash, 2),
+        'edge_density': round(edge_density, 2)
+    }
+
+
 @dataclass
 class DetectorConfig:
     """Configuracoes do detector ONNX"""
@@ -114,9 +294,9 @@ class DetectorConfig:
     iou_threshold: float = 0.45
     class_names: Dict[int, str] = field(default_factory=lambda: {0: "carta_tcg"})
 
-    # Camera CSI - Captura em alta resolucao
-    csi_capture_width: int = 1920
-    csi_capture_height: int = 1080
+    # Camera CSI - Captura em alta resolucao (Portrait 9:16)
+    csi_capture_width: int = 1080
+    csi_capture_height: int = 1920
     csi_max_width: int = 3280  # Resolucao maxima IMX219
     csi_max_height: int = 2464
 
@@ -125,9 +305,9 @@ class DetectorConfig:
     usb_capture_height: int = 720
     camera_fps: int = 30
 
-    # Stream - Resolucao reduzida para FPS alto
-    stream_width: int = 640
-    stream_height: int = 480
+    # Stream - 720p Portrait (9:16)
+    stream_width: int = 720
+    stream_height: int = 1280
 
     # Streaming
     jpeg_quality: int = 85
@@ -319,14 +499,30 @@ class PiCameraManager:
         self.lock = threading.Lock()
         self.is_running = False
 
-        # Configuracoes atuais da camera
+        # Configuracoes atuais da camera (valores baseados no painel de referencia)
         self.current_config = {
-            'exposure_time': 33000,  # microsegundos (~30fps)
-            'analogue_gain': 8.0,
-            'brightness': 0.0,
-            'contrast': 1.0,
-            'saturation': 1.0,
-            'sharpness': 1.0
+            # Exposicao
+            'exposure_time': 16667,  # microsegundos (1/60s)
+            'ae_enable': True,       # Auto Exposure ON
+            # ISO (mapeado para analogue_gain)
+            'iso': 100,              # ISO 100-3200 (gain 1.0-32.0)
+            'analogue_gain': 1.0,    # iso / 100 = gain
+            # Balanco de branco
+            'awb_enable': True,      # Auto White Balance ON
+            'temperature': 4013,     # Temperatura em Kelvin (range: 3000-8000)
+            'tint': 52,              # Tonalidade (range: -150 a 150)
+            'colour_gains': (1.5, 1.5),  # Ganhos de cor (red, blue) - valores iniciais neutros
+            # Ajustes de imagem (ranges oficiais Picamera2)
+            'brightness': 0,         # -100 a 100 (%) -> mapeado para -1.0 a 1.0
+            'saturation': 1.0,       # 0.0-32.0 (oficial), pratico: 0.8-2.0
+            'color_brightness': 0.0, # Brilho da cor -1.0 a 1.0 (software)
+            'contrast': 1.0,         # 0.0-32.0 (oficial), pratico: 1.0-4.0
+            'gamma': 1.0,            # 0.0-3.5 (software), pratico: 0.7-1.3
+            'sharpness': 1.0,        # 0.0-16.0 (oficial), pratico: 1.0-4.0
+            # Outros
+            'noise_reduction': 1,    # 0=Off, 1=Fast, 2=HighQuality
+            'horizontal_flip': False,
+            'vertical_flip': False
         }
 
     def start(self) -> bool:
@@ -339,25 +535,35 @@ class PiCameraManager:
             self.picam2 = Picamera2()
 
             # Configura para stream (resolucao menor) + captura (resolucao alta)
-            # Usa BGR888 para compatibilidade direta com OpenCV (sem conversao)
+            # IMPORTANTE: Picamera2 tem nomenclatura invertida!
+            # "RGB888" retorna BGR (compativel com OpenCV)
+            # "BGR888" retorna RGB (incompativel com OpenCV)
             preview_config = self.picam2.create_preview_configuration(
-                main={"size": (self.config.csi_capture_width, self.config.csi_capture_height), "format": "BGR888"},
-                lores={"size": (self.config.stream_width, self.config.stream_height), "format": "BGR888"},
+                main={"size": (self.config.csi_capture_width, self.config.csi_capture_height), "format": "RGB888"},
+                lores={"size": (self.config.stream_width, self.config.stream_height), "format": "RGB888"},
                 buffer_count=4
             )
             self.picam2.configure(preview_config)
 
-            # Configura controles manuais
-            self.picam2.set_controls({
+            # Configura controles (sem HorizontalFlip/VerticalFlip - nao suportados no Pi 5)
+            # Converte brilho de -100 a 100 para -1.0 a 1.0
+            brightness_picam = self.current_config['brightness'] / 100.0
+            controls = {
                 "ExposureTime": self.current_config['exposure_time'],
                 "AnalogueGain": self.current_config['analogue_gain'],
-                "Brightness": self.current_config['brightness'],
+                "Brightness": brightness_picam,
                 "Contrast": self.current_config['contrast'],
                 "Saturation": self.current_config['saturation'],
                 "Sharpness": self.current_config['sharpness'],
-                "AeEnable": False,  # Desabilita auto-exposure
-                "AwbEnable": True,  # Mantem auto white balance
-            })
+                "AeEnable": self.current_config['ae_enable'],
+                "AwbEnable": self.current_config['awb_enable'],
+                "NoiseReductionMode": self.current_config['noise_reduction'],
+            }
+            # Colour gains apenas se definidos manualmente (quando AWB desligado)
+            if self.current_config['colour_gains'][0] > 0:
+                controls["ColourGains"] = self.current_config['colour_gains']
+
+            self.picam2.set_controls(controls)
 
             self.picam2.start()
             self.is_running = True
@@ -372,6 +578,28 @@ class PiCameraManager:
             print(f"Erro ao iniciar camera CSI: {e}")
             return False
 
+    def _apply_software_effects(self, frame: np.ndarray) -> np.ndarray:
+        """Aplica efeitos de software (gama, tonalidade, brilho da cor)"""
+        if frame is None:
+            return None
+
+        # Aplicar gama (se diferente de 1.0)
+        gamma = self.current_config.get('gamma', 1.0)
+        if gamma != 1.0 and gamma > 0:
+            frame = apply_gamma_correction(frame, gamma)
+
+        # Aplicar tonalidade (se diferente de 0)
+        tint = self.current_config.get('tint', 0)
+        if tint != 0:
+            frame = apply_tint(frame, tint)
+
+        # Aplicar brilho da cor (se diferente de 0)
+        color_brightness = self.current_config.get('color_brightness', 0.0)
+        if color_brightness != 0:
+            frame = apply_color_brightness(frame, color_brightness)
+
+        return frame
+
     def read_stream(self) -> Optional[np.ndarray]:
         """Le frame em resolucao de stream (lores)"""
         if not self.is_running or self.picam2 is None:
@@ -379,8 +607,11 @@ class PiCameraManager:
 
         try:
             with self.lock:
-                # Captura frame de baixa resolucao (ja em BGR888)
-                return self.picam2.capture_array("lores")
+                # Captura frame - RGB888 retorna BGR (compativel com OpenCV)
+                frame = self.picam2.capture_array("lores")
+                frame = self._apply_flips(frame)
+                frame = self._apply_software_effects(frame)
+                return frame
         except Exception as e:
             print(f"Erro ao ler frame stream: {e}")
             return None
@@ -392,8 +623,11 @@ class PiCameraManager:
 
         try:
             with self.lock:
-                # Captura frame HD (ja em BGR888)
-                return self.picam2.capture_array("main")
+                # Captura frame HD - RGB888 retorna BGR (compativel com OpenCV)
+                frame = self.picam2.capture_array("main")
+                frame = self._apply_flips(frame)
+                frame = self._apply_software_effects(frame)
+                return frame
         except Exception as e:
             print(f"Erro ao ler frame HD: {e}")
             return None
@@ -408,62 +642,163 @@ class PiCameraManager:
                 # Para o stream atual
                 self.picam2.stop()
 
-                # Reconfigura para resolucao maxima (BGR888 para OpenCV)
+                # Reconfigura para resolucao maxima
+                # "RGB888" retorna BGR (compativel com OpenCV)
                 still_config = self.picam2.create_still_configuration(
-                    main={"size": (self.config.csi_max_width, self.config.csi_max_height), "format": "BGR888"}
+                    main={"size": (self.config.csi_max_width, self.config.csi_max_height), "format": "RGB888"}
                 )
                 self.picam2.configure(still_config)
                 self.picam2.start()
 
-                # Captura
+                # Captura - RGB888 retorna BGR, compativel com OpenCV
                 time.sleep(0.2)  # Aguarda estabilizar
                 frame = self.picam2.capture_array("main")
+                frame = self._apply_flips(frame)
 
                 # Restaura configuracao de stream
                 self.picam2.stop()
                 preview_config = self.picam2.create_preview_configuration(
-                    main={"size": (self.config.csi_capture_width, self.config.csi_capture_height), "format": "BGR888"},
-                    lores={"size": (self.config.stream_width, self.config.stream_height), "format": "BGR888"},
+                    main={"size": (self.config.csi_capture_width, self.config.csi_capture_height), "format": "RGB888"},
+                    lores={"size": (self.config.stream_width, self.config.stream_height), "format": "RGB888"},
                     buffer_count=4
                 )
                 self.picam2.configure(preview_config)
                 self.picam2.start()
 
-                return frame  # Ja em BGR888
+                return frame
 
         except Exception as e:
             print(f"Erro ao capturar full resolution: {e}")
             return None
 
     def set_exposure(self, exposure_us: int):
-        """Define tempo de exposicao em microsegundos"""
+        """Define tempo de exposicao em microsegundos (0-999999). 0 = auto"""
+        exposure_us = max(0, min(999999, exposure_us))
         if self.picam2 and self.is_running:
             self.current_config['exposure_time'] = exposure_us
             self.picam2.set_controls({"ExposureTime": exposure_us})
 
     def set_gain(self, gain: float):
-        """Define ganho analogico"""
+        """Define ganho analogico (1.0-32.0). ISO = gain * 100"""
+        gain = max(1.0, min(32.0, gain))
         if self.picam2 and self.is_running:
             self.current_config['analogue_gain'] = gain
             self.picam2.set_controls({"AnalogueGain": gain})
 
-    def set_brightness(self, brightness: float):
-        """Define brilho (-1.0 a 1.0)"""
+    def set_iso(self, iso: int):
+        """Define ISO (100-3200). Mapeado para AnalogueGain (1.0-32.0)."""
+        iso = max(100, min(3200, iso))
         if self.picam2 and self.is_running:
-            self.current_config['brightness'] = brightness
-            self.picam2.set_controls({"Brightness": brightness})
+            self.current_config['iso'] = iso
+            gain = iso_to_gain(iso)
+            gain = max(1.0, min(32.0, gain))
+            self.current_config['analogue_gain'] = gain
+            self.picam2.set_controls({"AnalogueGain": gain})
+
+    def set_brightness(self, brightness: int):
+        """Define brilho (-100 a 100%). Mapeado para -1.0 a 1.0 do Picamera2."""
+        # Mapeia -100 a 100 para -1.0 a 1.0
+        picam_brightness = brightness / 100.0
+        picam_brightness = max(-1.0, min(1.0, picam_brightness))
+        self.current_config['brightness'] = brightness
+        if self.picam2 and self.is_running:
+            self.picam2.set_controls({"Brightness": picam_brightness})
 
     def set_contrast(self, contrast: float):
-        """Define contraste (0.0 a 2.0)"""
+        """Define contraste (0.0-32.0). Pratico para cartas: 1.0-4.0"""
+        contrast = max(0.0, min(32.0, contrast))
         if self.picam2 and self.is_running:
             self.current_config['contrast'] = contrast
             self.picam2.set_controls({"Contrast": contrast})
 
+    def set_saturation(self, saturation: float):
+        """Define saturacao (0.0-32.0). Pratico para cartas: 0.8-2.0"""
+        saturation = max(0.0, min(32.0, saturation))
+        if self.picam2 and self.is_running:
+            self.current_config['saturation'] = saturation
+            self.picam2.set_controls({"Saturation": saturation})
+
     def set_sharpness(self, sharpness: float):
-        """Define nitidez (0.0 a 2.0)"""
+        """Define nitidez (0.0-16.0). Pratico para cartas: 1.0-4.0"""
+        sharpness = max(0.0, min(16.0, sharpness))
         if self.picam2 and self.is_running:
             self.current_config['sharpness'] = sharpness
             self.picam2.set_controls({"Sharpness": sharpness})
+
+    def set_temperature(self, temperature_k: int):
+        """Define temperatura de cor em Kelvin (3000-8000K)."""
+        self.current_config['temperature'] = temperature_k
+        # Calcula ganhos RGB a partir da temperatura
+        red_gain, blue_gain = temperature_to_rgb_gains(temperature_k)
+        self.current_config['colour_gains'] = (red_gain, blue_gain)
+        if self.picam2 and self.is_running:
+            # Desativa AWB automatico quando temperatura manual e definida
+            if not self.current_config['awb_enable']:
+                self.picam2.set_controls({"ColourGains": (red_gain, blue_gain)})
+
+    def set_tint(self, tint: float):
+        """Define tonalidade (-150 a 150). Aplicado via software."""
+        self.current_config['tint'] = tint
+
+    def set_color_brightness(self, amount: float):
+        """Define brilho da cor/vibrance (0.0-1.0). Aplicado via software."""
+        self.current_config['color_brightness'] = amount
+
+    def set_gamma(self, gamma: float):
+        """Define correcao gama (0.01-3.5). Pratico: 0.7-1.3. Aplicado via software."""
+        gamma = max(0.01, min(3.5, gamma))  # Min 0.01 para evitar divisao por zero
+        self.current_config['gamma'] = gamma
+
+    def set_ae_enable(self, enable: bool):
+        """Ativa/desativa Auto Exposure"""
+        if self.picam2 and self.is_running:
+            self.current_config['ae_enable'] = enable
+            self.picam2.set_controls({"AeEnable": enable})
+
+    def set_awb_enable(self, enable: bool):
+        """Ativa/desativa Auto White Balance"""
+        if self.picam2 and self.is_running:
+            self.current_config['awb_enable'] = enable
+            self.picam2.set_controls({"AwbEnable": enable})
+
+    def set_noise_reduction(self, mode: int):
+        """Define modo de reducao de ruido (0=Off, 1=Fast, 2=HighQuality)"""
+        if self.picam2 and self.is_running:
+            self.current_config['noise_reduction'] = mode
+            self.picam2.set_controls({"NoiseReductionMode": mode})
+
+    def set_horizontal_flip(self, flip: bool):
+        """Espelha horizontalmente (via software - Pi 5 nao suporta via hardware)"""
+        self.current_config['horizontal_flip'] = flip
+
+    def set_vertical_flip(self, flip: bool):
+        """Espelha verticalmente (via software - Pi 5 nao suporta via hardware)"""
+        self.current_config['vertical_flip'] = flip
+
+    def _apply_flips(self, frame: np.ndarray) -> np.ndarray:
+        """Aplica flips via software se configurados"""
+        if frame is None:
+            return None
+        if self.current_config['horizontal_flip'] and self.current_config['vertical_flip']:
+            return cv2.flip(frame, -1)  # Ambos
+        elif self.current_config['horizontal_flip']:
+            return cv2.flip(frame, 1)   # Horizontal
+        elif self.current_config['vertical_flip']:
+            return cv2.flip(frame, 0)   # Vertical
+        return frame
+
+    def set_colour_gains(self, red_gain: float, blue_gain: float):
+        """Define ganhos de cor manual. Desativa AWB automaticamente."""
+        red_gain = max(0.5, min(4.0, red_gain))
+        blue_gain = max(0.5, min(4.0, blue_gain))
+        self.current_config['colour_gains'] = (red_gain, blue_gain)
+        if self.picam2 and self.is_running:
+            # Desativa AWB antes de aplicar ganhos manuais
+            if self.current_config['awb_enable']:
+                self.current_config['awb_enable'] = False
+                self.picam2.set_controls({"AwbEnable": False})
+            self.picam2.set_controls({"ColourGains": (red_gain, blue_gain)})
+            print(f"ColourGains aplicado: red={red_gain:.2f}, blue={blue_gain:.2f}")
 
     def get_config(self) -> dict:
         """Retorna configuracao atual"""
@@ -656,11 +991,29 @@ class UnifiedCameraManager:
             config = self.pi_camera.get_config()
             return {
                 'type': 'csi',
-                'exposure_time': {'value': config['exposure_time'], 'min': 1000, 'max': 100000, 'unit': 'us'},
-                'analogue_gain': {'value': config['analogue_gain'], 'min': 1.0, 'max': 16.0},
-                'brightness': {'value': config['brightness'], 'min': -1.0, 'max': 1.0},
-                'contrast': {'value': config['contrast'], 'min': 0.0, 'max': 2.0},
-                'sharpness': {'value': config['sharpness'], 'min': 0.0, 'max': 2.0}
+                # Toggles
+                'ae_enable': config['ae_enable'],
+                'awb_enable': config['awb_enable'],
+                'horizontal_flip': config['horizontal_flip'],
+                'vertical_flip': config['vertical_flip'],
+                # Exposicao (oficial: 0-999999us, pratico: 1000-100000us)
+                'exposure_time': {'value': config['exposure_time'], 'min': 0, 'max': 999999, 'unit': 'us'},
+                # ISO (mapeado para AnalogueGain 1.0-32.0)
+                'iso': {'value': config['iso'], 'min': 100, 'max': 3200},
+                # Balanco de branco
+                'temperature': {'value': config['temperature'], 'min': 3000, 'max': 8000, 'unit': 'K'},
+                'tint': {'value': config['tint'], 'min': -150, 'max': 150},
+                'red_gain': {'value': config['colour_gains'][0] if config['colour_gains'][0] > 0 else 1.5, 'min': 0.5, 'max': 4.0},
+                'blue_gain': {'value': config['colour_gains'][1] if config['colour_gains'][1] > 0 else 1.5, 'min': 0.5, 'max': 4.0},
+                # Ajustes de imagem (ranges oficiais Picamera2)
+                'brightness': {'value': config['brightness'], 'min': -100, 'max': 100, 'unit': '%'},
+                'saturation': {'value': config['saturation'], 'min': 0.0, 'max': 32.0},
+                'color_brightness': {'value': config['color_brightness'], 'min': -1.0, 'max': 1.0},
+                'contrast': {'value': config['contrast'], 'min': 0.0, 'max': 32.0},
+                'gamma': {'value': config['gamma'], 'min': 0.0, 'max': 3.5},
+                'sharpness': {'value': config['sharpness'], 'min': 0.0, 'max': 16.0},
+                # Outros
+                'noise_reduction': config['noise_reduction']
             }
         return {'type': 'usb'}
 
@@ -668,16 +1021,51 @@ class UnifiedCameraManager:
         """Aplica configuracao na camera"""
         if self.active_camera == 'csi' and self.pi_camera:
             try:
+                # Toggles
+                if 'ae_enable' in config:
+                    self.pi_camera.set_ae_enable(bool(config['ae_enable']))
+                if 'awb_enable' in config:
+                    self.pi_camera.set_awb_enable(bool(config['awb_enable']))
+                if 'horizontal_flip' in config:
+                    self.pi_camera.set_horizontal_flip(bool(config['horizontal_flip']))
+                if 'vertical_flip' in config:
+                    self.pi_camera.set_vertical_flip(bool(config['vertical_flip']))
+                # Exposicao
                 if 'exposure_time' in config:
                     self.pi_camera.set_exposure(int(config['exposure_time']))
-                if 'analogue_gain' in config:
-                    self.pi_camera.set_gain(float(config['analogue_gain']))
+                # ISO
+                if 'iso' in config:
+                    self.pi_camera.set_iso(int(config['iso']))
+                # Balanco de branco
+                if 'temperature' in config:
+                    self.pi_camera.set_temperature(int(config['temperature']))
+                if 'tint' in config:
+                    self.pi_camera.set_tint(float(config['tint']))
+                # Ganhos de cor (vermelho/azul)
+                if 'red_gain' in config and 'blue_gain' in config:
+                    self.pi_camera.set_colour_gains(float(config['red_gain']), float(config['blue_gain']))
+                elif 'red_gain' in config:
+                    current = self.pi_camera.current_config['colour_gains']
+                    self.pi_camera.set_colour_gains(float(config['red_gain']), current[1] if current[1] > 0 else 1.5)
+                elif 'blue_gain' in config:
+                    current = self.pi_camera.current_config['colour_gains']
+                    self.pi_camera.set_colour_gains(current[0] if current[0] > 0 else 1.5, float(config['blue_gain']))
+                # Ajustes de imagem
                 if 'brightness' in config:
-                    self.pi_camera.set_brightness(float(config['brightness']))
+                    self.pi_camera.set_brightness(int(config['brightness']))
+                if 'saturation' in config:
+                    self.pi_camera.set_saturation(float(config['saturation']))
+                if 'color_brightness' in config:
+                    self.pi_camera.set_color_brightness(float(config['color_brightness']))
                 if 'contrast' in config:
                     self.pi_camera.set_contrast(float(config['contrast']))
+                if 'gamma' in config:
+                    self.pi_camera.set_gamma(float(config['gamma']))
                 if 'sharpness' in config:
                     self.pi_camera.set_sharpness(float(config['sharpness']))
+                # Outros
+                if 'noise_reduction' in config:
+                    self.pi_camera.set_noise_reduction(int(config['noise_reduction']))
                 return True
             except Exception as e:
                 print(f"Erro ao configurar camera: {e}")
@@ -693,19 +1081,21 @@ class UnifiedCameraManager:
 # ============================================================================
 
 class CaptureThread:
-    """Thread para captura continua"""
+    """Thread para captura continua - otimizado para stream apenas"""
 
     def __init__(self, camera_manager: UnifiedCameraManager, config: DetectorConfig):
         self.camera_manager = camera_manager
         self.config = config
 
         self.stream_frame = None
-        self.hd_frame = None
         self.stream_lock = threading.Lock()
-        self.hd_lock = threading.Lock()
 
         self.running = False
         self.thread = None
+
+        # Controle de tempo para manter FPS estavel
+        self.target_fps = 30
+        self.frame_interval = 1.0 / self.target_fps
 
     def start(self):
         """Inicia thread de captura"""
@@ -715,19 +1105,26 @@ class CaptureThread:
         return self
 
     def _capture_loop(self):
-        """Loop de captura"""
+        """Loop de captura - apenas stream frame"""
+        last_capture = time.perf_counter()
+
         while self.running:
+            now = time.perf_counter()
+            elapsed = now - last_capture
+
+            # Captura apenas stream (HD e capturado sob demanda)
             stream_frame = self.camera_manager.read_stream()
             if stream_frame is not None:
                 with self.stream_lock:
-                    self.stream_frame = stream_frame.copy()
+                    self.stream_frame = stream_frame
 
-            hd_frame = self.camera_manager.read_hd()
-            if hd_frame is not None:
-                with self.hd_lock:
-                    self.hd_frame = hd_frame.copy()
+            last_capture = time.perf_counter()
 
-            time.sleep(0.001)
+            # Sleep adaptativo para manter FPS alvo
+            process_time = last_capture - now
+            sleep_time = self.frame_interval - process_time
+            if sleep_time > 0:
+                time.sleep(sleep_time)
 
     def read_stream(self) -> Optional[np.ndarray]:
         """Le frame de stream"""
@@ -735,9 +1132,8 @@ class CaptureThread:
             return self.stream_frame.copy() if self.stream_frame is not None else None
 
     def read_hd(self) -> Optional[np.ndarray]:
-        """Le frame HD"""
-        with self.hd_lock:
-            return self.hd_frame.copy() if self.hd_frame is not None else None
+        """Le frame HD - captura sob demanda"""
+        return self.camera_manager.read_hd()
 
     def stop(self):
         """Para thread"""
@@ -915,7 +1311,20 @@ stats = {
     'inference_time': 0.0,
     'detections': 0,
     'camera_type': 'none',
-    'has_detection': False
+    'has_detection': False,
+    'exposure': {
+        'brightness': 0.0,
+        'overexposed_pct': 0.0,
+        'underexposed_pct': 0.0,
+        'status': 'unknown'
+    },
+    'quality': {
+        'S_std': 0.0,       # Estabilidade
+        'S_eff': 0.0,       # Qualidade real
+        'sanity': 0.0,      # Sanidade visual
+        'color_hash': 0.0,  # Hash
+        'edge_density': 0.0 # OCR
+    }
 }
 stats_lock = threading.Lock()
 
@@ -1024,21 +1433,14 @@ def generate_frames():
     """Gerador de frames MJPEG"""
     encode_params = [cv2.IMWRITE_JPEG_QUALITY, config.jpeg_quality]
     frame_count = 0
-
-    target_fps = 30
-    frame_time = 1.0 / target_fps
-    last_frame_time = time.time()
+    frame_interval = 1.0 / 30  # 30 FPS alvo
 
     stream_fps = 0.0
     stream_fps_counter = 0
-    stream_fps_start = time.time()
+    stream_fps_start = time.perf_counter()
 
     while True:
-        now = time.time()
-        elapsed = now - last_frame_time
-        if elapsed < frame_time:
-            time.sleep(frame_time - elapsed)
-        last_frame_time = time.time()
+        frame_start = time.perf_counter()
 
         if capture_thread is None:
             frame = np.zeros((config.stream_height, config.stream_width, 3), dtype=np.uint8)
@@ -1061,13 +1463,21 @@ def generate_frames():
 
             stream_fps_counter += 1
             if stream_fps_counter >= 30:
-                stream_elapsed = time.time() - stream_fps_start
+                stream_elapsed = time.perf_counter() - stream_fps_start
                 if stream_elapsed > 0:
                     stream_fps = stream_fps_counter / stream_elapsed
                 stream_fps_counter = 0
-                stream_fps_start = time.time()
+                stream_fps_start = time.perf_counter()
 
             camera_type = camera_manager.active_camera or 'none'
+
+            # Analisa exposicao e qualidade a cada 45 frames (~1.5s a 30fps)
+            exposure_info = None
+            quality_info = None
+            if frame_count % 45 == 0:
+                exposure_info = analyze_exposure(frame)
+                quality_info = analyze_image_quality(frame)
+
             frame = draw_detections(frame, detections, config)
             frame = draw_stats(frame, stream_fps, inference_time, len(detections), camera_type)
 
@@ -1077,10 +1487,20 @@ def generate_frames():
                 stats['detections'] = len(detections)
                 stats['has_detection'] = has_detection
                 stats['camera_type'] = camera_type
+                if exposure_info:
+                    stats['exposure'] = exposure_info
+                if quality_info:
+                    stats['quality'] = quality_info
 
         _, buffer = cv2.imencode('.jpg', frame, encode_params)
         yield (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
+
+        # Controle de tempo para FPS estavel
+        frame_time = time.perf_counter() - frame_start
+        sleep_time = frame_interval - frame_time
+        if sleep_time > 0:
+            time.sleep(sleep_time)
 
 
 # Flask App

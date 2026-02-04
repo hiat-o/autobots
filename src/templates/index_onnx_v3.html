@@ -11,11 +11,39 @@
             background: #1a1a2e;
             color: #e0e0e0;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        /* Layout Principal - Side by Side */
+        .main-layout {
+            display: flex;
+            gap: 24px;
+            max-width: 1600px;
+            margin: 0 auto;
+            align-items: flex-start;
+        }
+
+        .left-panel {
+            flex: 1;
             display: flex;
             flex-direction: column;
             align-items: center;
-            min-height: 100vh;
-            padding: 20px;
+            min-width: 0;
+        }
+
+        .right-panel {
+            width: 380px;
+            flex-shrink: 0;
+            position: sticky;
+            top: 20px;
+            max-height: calc(100vh - 40px);
+            overflow-y: auto;
         }
 
         h1 {
@@ -177,13 +205,13 @@
             50% { opacity: 0.4; }
         }
 
-        /* Video Container */
+        /* Video Container - Portrait 9:16 */
         .video-container {
             border: 2px solid #333;
             border-radius: 8px;
             overflow: hidden;
             background: #000;
-            max-width: 100%;
+            max-width: 480px;
             position: relative;
         }
 
@@ -208,6 +236,8 @@
             border-radius: 8px;
             flex-wrap: wrap;
             justify-content: center;
+            max-width: 480px;
+            width: 100%;
         }
 
         .stat-item {
@@ -226,6 +256,189 @@
             font-size: 0.75rem;
             color: #888;
             text-transform: uppercase;
+        }
+
+        /* Exposure Panel */
+        .exposure-panel {
+            margin-top: 16px;
+            padding: 16px 20px;
+            background: #2d2d44;
+            border-radius: 8px;
+            width: 100%;
+            max-width: 480px;
+        }
+
+        .exposure-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .exposure-title {
+            font-size: 0.9rem;
+            color: #aaa;
+        }
+
+        .exposure-status {
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+
+        .exposure-status.ok {
+            background: #1e5631;
+            color: #00ff88;
+        }
+
+        .exposure-status.overexposed {
+            background: #5c3d2e;
+            color: #ff6b6b;
+        }
+
+        .exposure-status.underexposed {
+            background: #3d3d5c;
+            color: #6b9fff;
+        }
+
+        .exposure-status.unknown {
+            background: #444;
+            color: #888;
+        }
+
+        .exposure-bar-container {
+            margin-bottom: 8px;
+        }
+
+        .exposure-bar-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.75rem;
+            color: #888;
+            margin-bottom: 4px;
+        }
+
+        .exposure-bar {
+            height: 8px;
+            background: #444;
+            border-radius: 4px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .exposure-bar-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.3s, background 0.3s;
+        }
+
+        .exposure-bar-fill.brightness {
+            background: linear-gradient(90deg, #3d3d5c 0%, #00ff88 40%, #00ff88 60%, #ff6b6b 100%);
+        }
+
+        .exposure-bar-marker {
+            position: absolute;
+            top: -2px;
+            width: 4px;
+            height: 12px;
+            background: #fff;
+            border-radius: 2px;
+            transform: translateX(-50%);
+            box-shadow: 0 0 4px rgba(0,0,0,0.5);
+        }
+
+        .exposure-ideal-range {
+            position: absolute;
+            top: 0;
+            height: 100%;
+            background: rgba(0, 255, 136, 0.2);
+            border-left: 1px dashed #00ff88;
+            border-right: 1px dashed #00ff88;
+        }
+
+        .exposure-metrics {
+            display: flex;
+            justify-content: space-around;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid #444;
+        }
+
+        .exposure-metric {
+            text-align: center;
+        }
+
+        .exposure-metric-value {
+            font-size: 1.1rem;
+            font-weight: bold;
+            color: #00ff88;
+        }
+
+        .exposure-metric-value.warning {
+            color: #ffaa00;
+        }
+
+        .exposure-metric-value.danger {
+            color: #ff6b6b;
+        }
+
+        .exposure-metric-label {
+            font-size: 0.7rem;
+            color: #666;
+        }
+
+        /* Quality Metrics Panel */
+        .quality-panel {
+            margin-top: 16px;
+            padding: 16px 20px;
+            background: #2d2d44;
+            border-radius: 8px;
+            width: 100%;
+            max-width: 480px;
+        }
+
+        .quality-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .quality-title {
+            font-size: 0.9rem;
+            color: #aaa;
+        }
+
+        .quality-metrics {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 8px;
+        }
+
+        .quality-metric {
+            text-align: center;
+            padding: 8px 4px;
+            background: #3a3a50;
+            border-radius: 6px;
+        }
+
+        .quality-metric-value {
+            font-size: 1rem;
+            font-weight: bold;
+            color: #00ff88;
+        }
+
+        .quality-metric-label {
+            font-size: 0.65rem;
+            color: #888;
+            margin-top: 2px;
+        }
+
+        .quality-metric-name {
+            font-size: 0.7rem;
+            color: #666;
+            margin-top: 2px;
         }
 
         /* Capture Result */
@@ -271,12 +484,10 @@
 
         /* Camera Config Panel */
         .config-panel {
-            margin-top: 20px;
             padding: 16px;
             background: #2d2d44;
             border-radius: 8px;
             width: 100%;
-            max-width: 500px;
         }
 
         .config-panel h3 {
@@ -357,6 +568,132 @@
             font-style: italic;
         }
 
+        /* Toggle Switch */
+        .toggle-group {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid #3a3a50;
+        }
+
+        .toggle-group:last-of-type {
+            border-bottom: none;
+            margin-bottom: 12px;
+        }
+
+        .toggle-label {
+            font-size: 0.85rem;
+            color: #aaa;
+        }
+
+        .toggle-switch {
+            position: relative;
+            width: 48px;
+            height: 24px;
+        }
+
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #444;
+            transition: 0.3s;
+            border-radius: 24px;
+        }
+
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background-color: #888;
+            transition: 0.3s;
+            border-radius: 50%;
+        }
+
+        .toggle-switch input:checked + .toggle-slider {
+            background-color: #1e5631;
+        }
+
+        .toggle-switch input:checked + .toggle-slider:before {
+            transform: translateX(24px);
+            background-color: #00ff88;
+        }
+
+        .toggle-status {
+            font-size: 0.7rem;
+            color: #666;
+            margin-left: 8px;
+        }
+
+        .toggle-status.on {
+            color: #00ff88;
+        }
+
+        .slider-group.disabled,
+        .config-section.disabled {
+            opacity: 0.4;
+            pointer-events: none;
+        }
+
+        /* Select Group */
+        .select-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            margin-bottom: 12px;
+        }
+
+        .select-group label {
+            font-size: 0.85rem;
+            color: #aaa;
+        }
+
+        .select-group select {
+            background: #3a3a50;
+            color: #e0e0e0;
+            border: 1px solid #555;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            cursor: pointer;
+        }
+
+        .select-group select:hover {
+            border-color: #00ff88;
+        }
+
+        .select-group select:focus {
+            outline: none;
+            border-color: #00ff88;
+        }
+
+        /* Section divider */
+        .config-section {
+            margin-top: 16px;
+            padding-top: 12px;
+            border-top: 1px solid #3a3a50;
+        }
+
+        .config-section-title {
+            font-size: 0.8rem;
+            color: #666;
+            text-transform: uppercase;
+            margin-bottom: 12px;
+        }
+
         /* Info */
         .info {
             margin-top: 16px;
@@ -366,139 +703,378 @@
         }
 
         /* Responsive */
+        @media (max-width: 1100px) {
+            .main-layout {
+                flex-direction: column;
+                align-items: center;
+            }
+            .right-panel {
+                width: 100%;
+                max-width: 500px;
+                position: static;
+                max-height: none;
+                margin-top: 20px;
+            }
+            .left-panel {
+                width: 100%;
+            }
+        }
+
         @media (max-width: 600px) {
             h1 { font-size: 1.4rem; }
             .controls { flex-direction: column; }
             .stats-panel { gap: 12px; }
             .stat-value { font-size: 1.2rem; }
             .capture-btn { width: 100%; }
-            .config-panel { max-width: 100%; }
+            .right-panel { max-width: 100%; }
         }
     </style>
 </head>
 <body>
-    <h1>Mimir TCG - Card Detection</h1>
-    <p class="subtitle">
-        ONNX Runtime | Camera CSI IMX219
-        <span class="badge" id="cameraBadge">-</span>
-    </p>
-
-    <div class="controls">
-        <div class="control-group">
-            <label for="cameraSelect">Camera:</label>
-            <select id="cameraSelect" onchange="changeCamera()">
-                <option value="">Carregando...</option>
-            </select>
-        </div>
-        <button onclick="refreshCameras()" id="refreshBtn">Atualizar</button>
+    <div class="header">
+        <h1>Mimir TCG - Card Detection</h1>
+        <p class="subtitle">
+            ONNX Runtime | Camera CSI IMX219
+            <span class="badge" id="cameraBadge">-</span>
+        </p>
     </div>
 
-    <div class="status">
-        <span class="status-dot" id="statusDot"></span>
-        <span id="statusText">Conectado - Stream ativo</span>
-    </div>
-
-    <div class="video-container" id="videoContainer">
-        <img src="/video_feed" alt="Video Stream" id="stream"
-             onload="setConnected()"
-             onerror="setDisconnected()">
-    </div>
-
-    <div style="display: flex; align-items: center; gap: 8px;">
-        <button class="capture-btn no-detection" id="captureBtn" onclick="captureCard()" disabled>
-            Aguardando deteccao...
-        </button>
-    </div>
-
-    <div class="stats-panel">
-        <div class="stat-item">
-            <span class="stat-value" id="fpsValue">0</span>
-            <span class="stat-label">FPS</span>
-        </div>
-        <div class="stat-item">
-            <span class="stat-value" id="inferenceValue">0</span>
-            <span class="stat-label">Inference (ms)</span>
-        </div>
-        <div class="stat-item">
-            <span class="stat-value" id="detectionsValue">0</span>
-            <span class="stat-label">Detections</span>
-        </div>
-        <div class="stat-item">
-            <span class="stat-value" id="cameraTypeValue">-</span>
-            <span class="stat-label">Camera</span>
-        </div>
-    </div>
-
-    <div class="capture-result" id="captureResult">
-        <h3 id="captureTitle">Captura</h3>
-        <img id="captureImage" src="" alt="Captured card">
-        <p class="capture-info" id="captureInfo"></p>
-    </div>
-
-    <div class="config-panel" id="configPanel">
-        <h3 onclick="toggleConfig()">Configuracoes da Camera CSI</h3>
-        <div class="config-content" id="configContent">
-            <div class="config-unavailable" id="configUnavailable" style="display: none;">
-                Configuracoes disponiveis apenas para camera CSI
+    <div class="main-layout">
+        <!-- Painel Esquerdo - Video e Stats -->
+        <div class="left-panel">
+            <div class="controls">
+                <div class="control-group">
+                    <label for="cameraSelect">Camera:</label>
+                    <select id="cameraSelect" onchange="changeCamera()">
+                        <option value="">Carregando...</option>
+                    </select>
+                </div>
+                <button onclick="refreshCameras()" id="refreshBtn">Atualizar</button>
             </div>
 
-            <div id="csiConfig">
-                <div class="slider-group">
-                    <div class="slider-label">
-                        <span>Tempo de Exposicao</span>
-                        <span class="slider-value" id="exposureValue">33000 us</span>
-                    </div>
-                    <input type="range" id="exposureSlider" min="1000" max="100000" value="33000" step="1000"
-                           oninput="updateSliderValue('exposure', this.value)"
-                           onchange="applyConfig()">
-                </div>
+            <div class="status">
+                <span class="status-dot" id="statusDot"></span>
+                <span id="statusText">Conectado - Stream ativo</span>
+            </div>
 
-                <div class="slider-group">
-                    <div class="slider-label">
-                        <span>Ganho Analogico</span>
-                        <span class="slider-value" id="gainValue">8.0</span>
-                    </div>
-                    <input type="range" id="gainSlider" min="1" max="16" value="8" step="0.5"
-                           oninput="updateSliderValue('gain', this.value)"
-                           onchange="applyConfig()">
-                </div>
+            <div class="video-container" id="videoContainer">
+                <img src="/video_feed" alt="Video Stream" id="stream"
+                     onload="setConnected()"
+                     onerror="setDisconnected()">
+            </div>
 
-                <div class="slider-group">
-                    <div class="slider-label">
-                        <span>Brilho</span>
-                        <span class="slider-value" id="brightnessValue">0.0</span>
-                    </div>
-                    <input type="range" id="brightnessSlider" min="-1" max="1" value="0" step="0.1"
-                           oninput="updateSliderValue('brightness', this.value)"
-                           onchange="applyConfig()">
-                </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <button class="capture-btn no-detection" id="captureBtn" onclick="captureCard()" disabled>
+                    Aguardando deteccao...
+                </button>
+            </div>
 
-                <div class="slider-group">
-                    <div class="slider-label">
-                        <span>Contraste</span>
-                        <span class="slider-value" id="contrastValue">1.0</span>
-                    </div>
-                    <input type="range" id="contrastSlider" min="0" max="2" value="1" step="0.1"
-                           oninput="updateSliderValue('contrast', this.value)"
-                           onchange="applyConfig()">
+            <div class="stats-panel">
+                <div class="stat-item">
+                    <span class="stat-value" id="fpsValue">0</span>
+                    <span class="stat-label">FPS</span>
                 </div>
-
-                <div class="slider-group">
-                    <div class="slider-label">
-                        <span>Nitidez</span>
-                        <span class="slider-value" id="sharpnessValue">1.0</span>
-                    </div>
-                    <input type="range" id="sharpnessSlider" min="0" max="2" value="1" step="0.1"
-                           oninput="updateSliderValue('sharpness', this.value)"
-                           onchange="applyConfig()">
+                <div class="stat-item">
+                    <span class="stat-value" id="inferenceValue">0</span>
+                    <span class="stat-label">Inference (ms)</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value" id="detectionsValue">0</span>
+                    <span class="stat-label">Detections</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value" id="cameraTypeValue">-</span>
+                    <span class="stat-label">Camera</span>
                 </div>
             </div>
-        </div>
-    </div>
 
-    <p class="info">
-        Camera CSI IMX219 | Resolucao maxima: 3280x2464 | Foco fixo (ajuste manual)
-    </p>
+            <!-- Painel de Exposicao -->
+            <div class="exposure-panel" id="exposurePanel">
+                <div class="exposure-header">
+                    <span class="exposure-title">Nivel de Exposicao</span>
+                    <span class="exposure-status unknown" id="exposureStatus">--</span>
+                </div>
+
+                <div class="exposure-bar-container">
+                    <div class="exposure-bar-label">
+                        <span>Escuro</span>
+                        <span>Ideal: 100-160</span>
+                        <span>Claro</span>
+                    </div>
+                    <div class="exposure-bar">
+                        <div class="exposure-ideal-range" style="left: 39%; width: 24%;"></div>
+                        <div class="exposure-bar-marker" id="brightnessMarker" style="left: 50%;"></div>
+                    </div>
+                </div>
+
+                <div class="exposure-metrics">
+                    <div class="exposure-metric">
+                        <span class="exposure-metric-value" id="brightnessValue2">0</span>
+                        <span class="exposure-metric-label">Brilho (0-255)</span>
+                    </div>
+                    <div class="exposure-metric">
+                        <span class="exposure-metric-value" id="overexposedValue">0%</span>
+                        <span class="exposure-metric-label">Saturados (&lt;5%)</span>
+                    </div>
+                    <div class="exposure-metric">
+                        <span class="exposure-metric-value" id="underexposedValue">0%</span>
+                        <span class="exposure-metric-label">Escuros (&lt;10%)</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Painel de Metricas de Qualidade -->
+            <div class="quality-panel" id="qualityPanel">
+                <div class="quality-header">
+                    <span class="quality-title">Metricas de Qualidade</span>
+                </div>
+
+                <div class="quality-metrics">
+                    <div class="quality-metric">
+                        <span class="quality-metric-value" id="sStdValue">0</span>
+                        <span class="quality-metric-label">Estabilidade</span>
+                        <span class="quality-metric-name">S_std</span>
+                    </div>
+                    <div class="quality-metric">
+                        <span class="quality-metric-value" id="sEffValue">0</span>
+                        <span class="quality-metric-label">Qualidade</span>
+                        <span class="quality-metric-name">S_eff</span>
+                    </div>
+                    <div class="quality-metric">
+                        <span class="quality-metric-value" id="sanityValue">0</span>
+                        <span class="quality-metric-label">Sanidade</span>
+                        <span class="quality-metric-name">S/std(V)</span>
+                    </div>
+                    <div class="quality-metric">
+                        <span class="quality-metric-value" id="colorHashValue">0</span>
+                        <span class="quality-metric-label">Hash</span>
+                        <span class="quality-metric-name">a+b std</span>
+                    </div>
+                    <div class="quality-metric">
+                        <span class="quality-metric-value" id="edgeDensityValue">0</span>
+                        <span class="quality-metric-label">OCR</span>
+                        <span class="quality-metric-name">edges %</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="capture-result" id="captureResult">
+                <h3 id="captureTitle">Captura</h3>
+                <img id="captureImage" src="" alt="Captured card">
+                <p class="capture-info" id="captureInfo"></p>
+            </div>
+
+            <p class="info">
+                Camera CSI IMX219 | Stream: 720x1280 (9:16) | Max: 3280x2464 | Foco fixo
+            </p>
+        </div>
+        <!-- Fim do Painel Esquerdo -->
+
+        <!-- Painel Direito - Configuracoes -->
+        <div class="right-panel">
+            <div class="config-panel" id="configPanel">
+                <h3 onclick="toggleConfig()">Configuracoes da Camera CSI</h3>
+                <div class="config-content" id="configContent">
+                    <div class="config-unavailable" id="configUnavailable" style="display: none;">
+                        Configuracoes disponiveis apenas para camera CSI
+                    </div>
+
+                    <div id="csiConfig">
+                        <!-- === TOGGLES === -->
+                        <div class="toggle-group">
+                            <span class="toggle-label">Exposicao (Auto)</span>
+                            <div style="display: flex; align-items: center;">
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="aeToggle" checked onchange="toggleAutoExposure()">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                                <span class="toggle-status on" id="aeStatus">ON</span>
+                            </div>
+                        </div>
+
+                        <div class="toggle-group">
+                            <span class="toggle-label">Balanco de branco (Auto)</span>
+                            <div style="display: flex; align-items: center;">
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="awbToggle" checked onchange="toggleAutoWhiteBalance()">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                                <span class="toggle-status on" id="awbStatus">ON</span>
+                            </div>
+                        </div>
+
+                        <div class="toggle-group">
+                            <span class="toggle-label">Espelhar Horizontal</span>
+                            <div style="display: flex; align-items: center;">
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="hFlipToggle" onchange="toggleHorizontalFlip()">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                                <span class="toggle-status" id="hFlipStatus">OFF</span>
+                            </div>
+                        </div>
+
+                        <div class="toggle-group">
+                            <span class="toggle-label">Espelhar Vertical</span>
+                            <div style="display: flex; align-items: center;">
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="vFlipToggle" onchange="toggleVerticalFlip()">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                                <span class="toggle-status" id="vFlipStatus">OFF</span>
+                            </div>
+                        </div>
+
+                        <!-- === EXPOSICAO === -->
+                        <div class="config-section">
+                            <div class="config-section-title">Exposicao</div>
+
+                            <div class="slider-group" id="exposureGroup">
+                                <div class="slider-label">
+                                    <span>Velocidade do Obturador</span>
+                                    <span class="slider-value" id="exposureValue">16667 us</span>
+                                </div>
+                                <input type="range" id="exposureSlider" min="0" max="999999" value="16667" step="1000"
+                                       oninput="updateSliderValue('exposure', this.value)"
+                                       onchange="applyConfig()">
+                            </div>
+
+                            <div class="slider-group" id="isoGroup">
+                                <div class="slider-label">
+                                    <span>ISO</span>
+                                    <span class="slider-value" id="isoValue">100</span>
+                                </div>
+                                <input type="range" id="isoSlider" min="100" max="3200" value="100" step="10"
+                                       oninput="updateSliderValue('iso', this.value)"
+                                       onchange="applyConfig()">
+                            </div>
+                        </div>
+
+                        <!-- === BALANCO DE BRANCO === -->
+                        <div class="config-section" id="wbSection">
+                            <div class="config-section-title">Balanco de Branco</div>
+
+                            <div class="slider-group" id="temperatureGroup">
+                                <div class="slider-label">
+                                    <span>Temperatura</span>
+                                    <span class="slider-value" id="temperatureValue">4013 K</span>
+                                </div>
+                                <input type="range" id="temperatureSlider" min="3000" max="8000" value="4013" step="100"
+                                       oninput="updateSliderValue('temperature', this.value)"
+                                       onchange="applyConfig()">
+                            </div>
+
+                            <div class="slider-group" id="tintGroup">
+                                <div class="slider-label">
+                                    <span>Tonalidade</span>
+                                    <span class="slider-value" id="tintValue">+52</span>
+                                </div>
+                                <input type="range" id="tintSlider" min="-150" max="150" value="52" step="1"
+                                       oninput="updateSliderValue('tint', this.value)"
+                                       onchange="applyConfig()">
+                            </div>
+
+                            <div class="slider-group" id="redGainGroup">
+                                <div class="slider-label">
+                                    <span>Ganho Vermelho</span>
+                                    <span class="slider-value" id="redGainValue">1.50</span>
+                                </div>
+                                <input type="range" id="redGainSlider" min="0.5" max="4.0" value="1.5" step="0.01"
+                                       oninput="updateSliderValue('redGain', this.value)"
+                                       onchange="applyConfig()">
+                            </div>
+
+                            <div class="slider-group" id="blueGainGroup">
+                                <div class="slider-label">
+                                    <span>Ganho Azul</span>
+                                    <span class="slider-value" id="blueGainValue">1.50</span>
+                                </div>
+                                <input type="range" id="blueGainSlider" min="0.5" max="4.0" value="1.5" step="0.01"
+                                       oninput="updateSliderValue('blueGain', this.value)"
+                                       onchange="applyConfig()">
+                            </div>
+                        </div>
+
+                        <!-- === IMAGEM === -->
+                        <div class="config-section">
+                            <div class="config-section-title">Ajustes de Imagem</div>
+
+                            <div class="slider-group">
+                                <div class="slider-label">
+                                    <span>Brilho</span>
+                                    <span class="slider-value" id="brightnessValue">0%</span>
+                                </div>
+                                <input type="range" id="brightnessSlider" min="-100" max="100" value="0" step="1"
+                                       oninput="updateSliderValue('brightness', this.value)"
+                                       onchange="applyConfig()">
+                            </div>
+
+                            <div class="slider-group">
+                                <div class="slider-label">
+                                    <span>Saturacao</span>
+                                    <span class="slider-value" id="saturationValue">1.00</span>
+                                </div>
+                                <input type="range" id="saturationSlider" min="0" max="32" value="1" step="0.1"
+                                       oninput="updateSliderValue('saturation', this.value)"
+                                       onchange="applyConfig()">
+                            </div>
+
+                            <div class="slider-group">
+                                <div class="slider-label">
+                                    <span>Brilho da Cor</span>
+                                    <span class="slider-value" id="colorBrightnessValue">0.00</span>
+                                </div>
+                                <input type="range" id="colorBrightnessSlider" min="-1" max="1" value="0" step="0.01"
+                                       oninput="updateSliderValue('colorBrightness', this.value)"
+                                       onchange="applyConfig()">
+                            </div>
+
+                            <div class="slider-group">
+                                <div class="slider-label">
+                                    <span>Contraste</span>
+                                    <span class="slider-value" id="contrastValue">1.00</span>
+                                </div>
+                                <input type="range" id="contrastSlider" min="0" max="32" value="1" step="0.1"
+                                       oninput="updateSliderValue('contrast', this.value)"
+                                       onchange="applyConfig()">
+                            </div>
+
+                            <div class="slider-group">
+                                <div class="slider-label">
+                                    <span>Gama</span>
+                                    <span class="slider-value" id="gammaValue">1.00</span>
+                                </div>
+                                <input type="range" id="gammaSlider" min="0.01" max="3.5" value="1" step="0.01"
+                                       oninput="updateSliderValue('gamma', this.value)"
+                                       onchange="applyConfig()">
+                            </div>
+
+                            <div class="slider-group">
+                                <div class="slider-label">
+                                    <span>Nitidez</span>
+                                    <span class="slider-value" id="sharpnessValue">1.00</span>
+                                </div>
+                                <input type="range" id="sharpnessSlider" min="0" max="16" value="1" step="0.1"
+                                       oninput="updateSliderValue('sharpness', this.value)"
+                                       onchange="applyConfig()">
+                            </div>
+
+                            <div class="select-group">
+                                <label>Reducao de Ruido</label>
+                                <select id="noiseReductionSelect" onchange="applyConfig()">
+                                    <option value="0">Desligado</option>
+                                    <option value="1" selected>Rapido</option>
+                                    <option value="2">Alta Qualidade</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+            </div>
+        </div>
+        </div>
+        <!-- Fim do Painel Direito -->
+    </div>
+    <!-- Fim do Main Layout -->
 
     <script>
         // Estado
@@ -527,13 +1103,6 @@
         const csiConfig = document.getElementById('csiConfig');
         const configUnavailable = document.getElementById('configUnavailable');
 
-        // Sliders
-        const exposureSlider = document.getElementById('exposureSlider');
-        const gainSlider = document.getElementById('gainSlider');
-        const brightnessSlider = document.getElementById('brightnessSlider');
-        const contrastSlider = document.getElementById('contrastSlider');
-        const sharpnessSlider = document.getElementById('sharpnessSlider');
-
         // Inicializa
         document.addEventListener('DOMContentLoaded', () => {
             loadCameras();
@@ -556,17 +1125,49 @@
                     csiConfig.style.display = 'block';
                     configUnavailable.style.display = 'none';
 
-                    exposureSlider.value = config.exposure_time.value;
-                    gainSlider.value = config.analogue_gain.value;
-                    brightnessSlider.value = config.brightness.value;
-                    contrastSlider.value = config.contrast.value;
-                    sharpnessSlider.value = config.sharpness.value;
+                    // Toggles
+                    document.getElementById('aeToggle').checked = config.ae_enable;
+                    document.getElementById('awbToggle').checked = config.awb_enable;
+                    document.getElementById('hFlipToggle').checked = config.horizontal_flip;
+                    document.getElementById('vFlipToggle').checked = config.vertical_flip;
+                    updateToggleStatus('ae', config.ae_enable);
+                    updateToggleStatus('awb', config.awb_enable);
+                    updateToggleStatus('hFlip', config.horizontal_flip);
+                    updateToggleStatus('vFlip', config.vertical_flip);
+                    updateSlidersState(config.ae_enable, config.awb_enable);
 
+                    // Sliders - Exposicao
+                    document.getElementById('exposureSlider').value = config.exposure_time.value;
+                    document.getElementById('isoSlider').value = config.iso.value;
                     updateSliderValue('exposure', config.exposure_time.value);
-                    updateSliderValue('gain', config.analogue_gain.value);
+                    updateSliderValue('iso', config.iso.value);
+
+                    // Sliders - Balanco de Branco
+                    document.getElementById('temperatureSlider').value = config.temperature.value;
+                    document.getElementById('tintSlider').value = config.tint.value;
+                    document.getElementById('redGainSlider').value = config.red_gain.value;
+                    document.getElementById('blueGainSlider').value = config.blue_gain.value;
+                    updateSliderValue('temperature', config.temperature.value);
+                    updateSliderValue('tint', config.tint.value);
+                    updateSliderValue('redGain', config.red_gain.value);
+                    updateSliderValue('blueGain', config.blue_gain.value);
+
+                    // Sliders - Imagem
+                    document.getElementById('brightnessSlider').value = config.brightness.value;
+                    document.getElementById('saturationSlider').value = config.saturation.value;
+                    document.getElementById('colorBrightnessSlider').value = config.color_brightness.value;
+                    document.getElementById('contrastSlider').value = config.contrast.value;
+                    document.getElementById('gammaSlider').value = config.gamma.value;
+                    document.getElementById('sharpnessSlider').value = config.sharpness.value;
                     updateSliderValue('brightness', config.brightness.value);
+                    updateSliderValue('saturation', config.saturation.value);
+                    updateSliderValue('colorBrightness', config.color_brightness.value);
                     updateSliderValue('contrast', config.contrast.value);
+                    updateSliderValue('gamma', config.gamma.value);
                     updateSliderValue('sharpness', config.sharpness.value);
+
+                    // Selects
+                    document.getElementById('noiseReductionSelect').value = config.noise_reduction;
                 } else {
                     csiConfig.style.display = 'none';
                     configUnavailable.style.display = 'block';
@@ -576,23 +1177,119 @@
             }
         }
 
+        // Atualiza status do toggle
+        function updateToggleStatus(type, enabled) {
+            const statusEl = document.getElementById(type + 'Status');
+            statusEl.textContent = enabled ? 'ON' : 'OFF';
+            statusEl.className = 'toggle-status' + (enabled ? ' on' : '');
+        }
+
+        // Atualiza estado dos sliders baseado no AE e AWB
+        function updateSlidersState(aeEnabled, awbEnabled) {
+            const exposureGroup = document.getElementById('exposureGroup');
+            const isoGroup = document.getElementById('isoGroup');
+            const wbSection = document.getElementById('wbSection');
+
+            if (aeEnabled) {
+                exposureGroup.classList.add('disabled');
+                isoGroup.classList.add('disabled');
+            } else {
+                exposureGroup.classList.remove('disabled');
+                isoGroup.classList.remove('disabled');
+            }
+
+            // Temperatura e Tonalidade so funcionam quando AWB esta desligado
+            if (awbEnabled !== undefined) {
+                if (awbEnabled) {
+                    wbSection.classList.add('disabled');
+                } else {
+                    wbSection.classList.remove('disabled');
+                }
+            }
+        }
+
+        // Toggle Auto Exposure
+        async function toggleAutoExposure() {
+            const enabled = document.getElementById('aeToggle').checked;
+            updateToggleStatus('ae', enabled);
+            updateSlidersState(enabled);
+            await sendConfig({ ae_enable: enabled });
+        }
+
+        // Toggle Auto White Balance
+        async function toggleAutoWhiteBalance() {
+            const enabled = document.getElementById('awbToggle').checked;
+            updateToggleStatus('awb', enabled);
+            updateSlidersState(undefined, enabled);
+            await sendConfig({ awb_enable: enabled });
+        }
+
+        // Toggle Horizontal Flip
+        async function toggleHorizontalFlip() {
+            const enabled = document.getElementById('hFlipToggle').checked;
+            updateToggleStatus('hFlip', enabled);
+            await sendConfig({ horizontal_flip: enabled });
+        }
+
+        // Toggle Vertical Flip
+        async function toggleVerticalFlip() {
+            const enabled = document.getElementById('vFlipToggle').checked;
+            updateToggleStatus('vFlip', enabled);
+            await sendConfig({ vertical_flip: enabled });
+        }
+
+        // Envia config para o servidor
+        async function sendConfig(config) {
+            try {
+                await fetch('/camera/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(config)
+                });
+            } catch (error) {
+                console.error('Erro ao enviar config:', error);
+            }
+        }
+
         // Atualiza valor do slider
         function updateSliderValue(type, value) {
+            const v = parseFloat(value);
             switch(type) {
                 case 'exposure':
                     document.getElementById('exposureValue').textContent = value + ' us';
                     break;
-                case 'gain':
-                    document.getElementById('gainValue').textContent = parseFloat(value).toFixed(1);
+                case 'iso':
+                    document.getElementById('isoValue').textContent = '+' + Math.round(v);
+                    break;
+                case 'temperature':
+                    document.getElementById('temperatureValue').textContent = Math.round(v) + ' K';
+                    break;
+                case 'tint':
+                    document.getElementById('tintValue').textContent = (v >= 0 ? '+' : '') + Math.round(v);
                     break;
                 case 'brightness':
-                    document.getElementById('brightnessValue').textContent = parseFloat(value).toFixed(1);
+                    document.getElementById('brightnessValue').textContent = (v >= 0 ? '+' : '') + Math.round(v) + '%';
+                    break;
+                case 'saturation':
+                    document.getElementById('saturationValue').textContent = v.toFixed(2);
+                    break;
+                case 'colorBrightness':
+                    document.getElementById('colorBrightnessValue').textContent = (v >= 0 ? '+' : '') + v.toFixed(2);
                     break;
                 case 'contrast':
-                    document.getElementById('contrastValue').textContent = parseFloat(value).toFixed(1);
+                    document.getElementById('contrastValue').textContent = v.toFixed(2);
+                    break;
+                case 'gamma':
+                    document.getElementById('gammaValue').textContent = v.toFixed(2);
                     break;
                 case 'sharpness':
-                    document.getElementById('sharpnessValue').textContent = parseFloat(value).toFixed(1);
+                    document.getElementById('sharpnessValue').textContent = v.toFixed(2);
+                    break;
+                case 'redGain':
+                    document.getElementById('redGainValue').textContent = v.toFixed(2);
+                    break;
+                case 'blueGain':
+                    document.getElementById('blueGainValue').textContent = v.toFixed(2);
                     break;
             }
         }
@@ -601,11 +1298,22 @@
         async function applyConfig() {
             try {
                 const config = {
-                    exposure_time: parseInt(exposureSlider.value),
-                    analogue_gain: parseFloat(gainSlider.value),
-                    brightness: parseFloat(brightnessSlider.value),
-                    contrast: parseFloat(contrastSlider.value),
-                    sharpness: parseFloat(sharpnessSlider.value)
+                    // Exposicao
+                    exposure_time: parseInt(document.getElementById('exposureSlider').value),
+                    iso: parseInt(document.getElementById('isoSlider').value),
+                    // Balanco de Branco
+                    temperature: parseInt(document.getElementById('temperatureSlider').value),
+                    tint: parseFloat(document.getElementById('tintSlider').value),
+                    red_gain: parseFloat(document.getElementById('redGainSlider').value),
+                    blue_gain: parseFloat(document.getElementById('blueGainSlider').value),
+                    // Imagem
+                    brightness: parseInt(document.getElementById('brightnessSlider').value),
+                    saturation: parseFloat(document.getElementById('saturationSlider').value),
+                    color_brightness: parseFloat(document.getElementById('colorBrightnessSlider').value),
+                    contrast: parseFloat(document.getElementById('contrastSlider').value),
+                    gamma: parseFloat(document.getElementById('gammaSlider').value),
+                    sharpness: parseFloat(document.getElementById('sharpnessSlider').value),
+                    noise_reduction: parseInt(document.getElementById('noiseReductionSelect').value)
                 };
 
                 const response = await fetch('/camera/config', {
@@ -706,10 +1414,85 @@
                     cameraTypeValue.textContent = stats.camera_type.toUpperCase();
 
                     updateDetectionState(stats.has_detection);
+
+                    // Atualiza metricas de exposicao
+                    if (stats.exposure) {
+                        updateExposureMetrics(stats.exposure);
+                    }
+
+                    // Atualiza metricas de qualidade
+                    if (stats.quality) {
+                        updateQualityMetrics(stats.quality);
+                    }
                 } catch (error) {
                     // Ignora
                 }
             }, 500);
+        }
+
+        // Qualidade
+        function updateQualityMetrics(quality) {
+            document.getElementById('sStdValue').textContent = quality.S_std.toFixed(1);
+            document.getElementById('sEffValue').textContent = quality.S_eff.toFixed(1);
+            document.getElementById('sanityValue').textContent = quality.sanity.toFixed(2);
+            document.getElementById('colorHashValue').textContent = quality.color_hash.toFixed(1);
+            document.getElementById('edgeDensityValue').textContent = quality.edge_density.toFixed(1) + '%';
+        }
+
+        // Exposicao
+        function updateExposureMetrics(exposure) {
+            const brightnessValueEl = document.getElementById('brightnessValue2');
+            const overexposedValue = document.getElementById('overexposedValue');
+            const underexposedValue = document.getElementById('underexposedValue');
+            const exposureStatus = document.getElementById('exposureStatus');
+            const brightnessMarker = document.getElementById('brightnessMarker');
+
+            // Atualiza valores
+            brightnessValueEl.textContent = exposure.brightness.toFixed(0);
+            overexposedValue.textContent = exposure.overexposed_pct.toFixed(1) + '%';
+            underexposedValue.textContent = exposure.underexposed_pct.toFixed(1) + '%';
+
+            // Atualiza marcador de brilho (0-255 -> 0-100%)
+            const markerPos = (exposure.brightness / 255) * 100;
+            brightnessMarker.style.left = markerPos + '%';
+
+            // Atualiza status
+            exposureStatus.className = 'exposure-status ' + exposure.status;
+            switch(exposure.status) {
+                case 'ok':
+                    exposureStatus.textContent = 'OK';
+                    break;
+                case 'overexposed':
+                    exposureStatus.textContent = 'MUITO CLARO';
+                    break;
+                case 'underexposed':
+                    exposureStatus.textContent = 'MUITO ESCURO';
+                    break;
+                default:
+                    exposureStatus.textContent = '--';
+            }
+
+            // Cores dos valores baseado em limites
+            brightnessValueEl.className = 'exposure-metric-value';
+            if (exposure.brightness < 80 || exposure.brightness > 180) {
+                brightnessValueEl.classList.add('danger');
+            } else if (exposure.brightness < 100 || exposure.brightness > 160) {
+                brightnessValueEl.classList.add('warning');
+            }
+
+            overexposedValue.className = 'exposure-metric-value';
+            if (exposure.overexposed_pct > 5) {
+                overexposedValue.classList.add('danger');
+            } else if (exposure.overexposed_pct > 2) {
+                overexposedValue.classList.add('warning');
+            }
+
+            underexposedValue.className = 'exposure-metric-value';
+            if (exposure.underexposed_pct > 15) {
+                underexposedValue.classList.add('danger');
+            } else if (exposure.underexposed_pct > 8) {
+                underexposedValue.classList.add('warning');
+            }
         }
 
         // Deteccao
