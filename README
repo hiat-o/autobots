@@ -11,17 +11,20 @@ Sistema de detecção e classificação de cartas TCG para Raspberry Pi 5
 - **Armazenamento:** 32GB SD Card
 - **OS:** Debian GNU/Linux (Kernel 6.12.47+rpt-rpi-2712)
 
-### Câmera CSI - IMX219 (8MP)
+### Câmeras CSI
+
+O Raspberry Pi 5 possui duas portas CSI (CAM0 e CAM1), ambas em uso neste projeto.
+
+#### Câmera 0 - IMX219 (8MP) — Picamera2 index `0`
 
 - **Modelo:** SCHV 8MP Camera Module (clone IMX219)
 - **Sensor:** Sony IMX219 (10-bit RGGB)
 - **Resolução máxima:** 3280x2464 pixels (8.08 MP)
 - **Foco:** Fixo (ajuste manual girando a lente)
-- **Interface:** CSI (conectada na porta CAM0 - direita)
+- **Porta:** CAM1 (conector esquerdo)
 - **Driver:** libcamera v0.6.0 + libpisp v1.3.0
 - **Tuning file:** `/usr/share/libcamera/ipa/rpi/pisp/imx219.json`
-
-#### Modos de captura disponíveis
+- **Rotação:** 180°
 
 | Resolução   | FPS    | Formato        | Uso recomendado              |
 |-------------|--------|----------------|------------------------------|
@@ -30,34 +33,77 @@ Sistema de detecção e classificação de cartas TCG para Raspberry Pi 5
 | 1640x1232   | 41 fps | SRGGB10_CSI2P  | Preview, processamento       |
 | 640x480     | 103 fps| SRGGB10_CSI2P  | Alta velocidade, detecção    |
 
+#### Câmera 1 - OV5647 (5MP) — Picamera2 index `1`
+
+- **Modelo:** Raspberry Pi Camera Rev 1.3
+- **Sensor:** OmnVision OV5647 (10-bit RGGB)
+- **Resolução máxima:** 2592x1944 pixels (5.04 MP)
+- **Foco:** Fixo
+- **Porta:** CAM0 (conector direito) — usa adaptador de cabo flat
+- **Driver:** libcamera v0.6.0 + libpisp v1.3.0
+- **Tuning file:** `/usr/share/libcamera/ipa/rpi/pisp/ov5647.json`
+- **Rotação:** 0°
+
+| Resolução   | FPS    | Formato        | Uso recomendado              |
+|-------------|--------|----------------|------------------------------|
+| 2592x1944   | 15 fps | SGBRG10_CSI2P  | Máxima qualidade, fotos      |
+| 1920x1080   | 30 fps | SGBRG10_CSI2P  | Full HD, vídeo               |
+| 1296x972    | 42 fps | SGBRG10_CSI2P  | Preview, processamento       |
+| 640x480     | 60 fps | SGBRG10_CSI2P  | Alta velocidade, detecção    |
+
+#### Uso no código (Picamera2)
+
+```python
+from picamera2 import Picamera2
+
+# Câmera IMX219 (8MP)
+picam_imx219 = Picamera2(0)
+
+# Câmera OV5647 (5MP - Rev 1.3)
+picam_ov5647 = Picamera2(1)
+
+# Listar todas as câmeras detectadas
+print(Picamera2.global_camera_info())
+```
+
 #### Configuração no config.txt
 
 ```bash
 # /boot/firmware/config.txt
 camera_auto_detect=0
 dtoverlay=imx219,cam0
+dtoverlay=ov5647,cam1
 ```
+
+**Nota:** A `camera_auto_detect=0` desabilita a detecção automática. Cada câmera
+precisa de seu próprio `dtoverlay` com o sensor e a porta corretos.
 
 #### Comandos úteis
 
 ```bash
-# Listar câmeras
-rpicam-hello --list-cameras
+# Listar câmeras detectadas
+python3 -c "from picamera2 import Picamera2; print(Picamera2.global_camera_info())"
 
-# Preview (5 segundos)
-rpicam-hello -t 5000
+# Listar dispositivos V4L2
+v4l2-ctl --list-devices
 
-# Capturar foto (resolução máxima)
-rpicam-still --zsl -o foto.jpg
+# Preview câmera 0 (5 segundos)
+rpicam-hello --camera 0 -t 5000
 
-# Capturar foto 1080p (mais rápido)
-rpicam-still --width 1920 --height 1080 --immediate -o foto.jpg
+# Preview câmera 1 (5 segundos)
+rpicam-hello --camera 1 -t 5000
+
+# Capturar foto câmera 0 (resolução máxima)
+rpicam-still --camera 0 --zsl -o foto_cam0.jpg
+
+# Capturar foto câmera 1 (resolução máxima)
+rpicam-still --camera 1 --zsl -o foto_cam1.jpg
 
 # Gravar vídeo
 rpicam-vid -t 10000 --width 1920 --height 1080 -o video.h264
 ```
 
-#### Parâmetros de exposição típicos
+#### Parâmetros de exposição típicos (IMX219)
 
 - **Exposição:** ~33ms (33251 µs)
 - **Analog Gain:** 8.0

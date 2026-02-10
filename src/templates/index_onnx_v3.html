@@ -749,6 +749,12 @@
                         <option value="">Carregando...</option>
                     </select>
                 </div>
+                <div class="control-group">
+                    <label for="resolutionSelect">Resolucao:</label>
+                    <select id="resolutionSelect" onchange="changeResolution()">
+                        <option value="">--</option>
+                    </select>
+                </div>
                 <button onclick="refreshCameras()" id="refreshBtn">Atualizar</button>
             </div>
 
@@ -1370,6 +1376,7 @@
             cameraBadge.className = 'badge ' + type;
             cameraType = type;
             loadCameraConfig();
+            loadResolutions();
         }
 
         function refreshCameras() { loadCameras(); }
@@ -1396,6 +1403,70 @@
             } catch (error) {
                 console.error('Erro:', error);
                 setDisconnected();
+            }
+        }
+
+        // Resolucao
+        const resolutionSelect = document.getElementById('resolutionSelect');
+
+        async function loadResolutions() {
+            try {
+                const response = await fetch('/camera/resolutions');
+                const resolutions = await response.json();
+
+                resolutionSelect.innerHTML = '';
+
+                if (resolutions.length === 0) {
+                    resolutionSelect.innerHTML = '<option value="">N/A</option>';
+                    resolutionSelect.disabled = true;
+                } else {
+                    resolutionSelect.disabled = false;
+                    resolutions.forEach(res => {
+                        const option = document.createElement('option');
+                        option.value = res.index;
+                        option.textContent = res.label;
+                        if (res.active) option.selected = true;
+                        resolutionSelect.appendChild(option);
+                    });
+                }
+            } catch (error) {
+                console.error('Erro ao carregar resolucoes:', error);
+            }
+        }
+
+        async function changeResolution() {
+            const index = resolutionSelect.value;
+            if (index === '') return;
+
+            try {
+                resolutionSelect.disabled = true;
+                const response = await fetch('/camera/resolution', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ index: parseInt(index) })
+                });
+                const result = await response.json();
+
+                if (result.success) {
+                    // Atualiza dropdown com estado atual
+                    resolutionSelect.innerHTML = '';
+                    result.resolutions.forEach(res => {
+                        const option = document.createElement('option');
+                        option.value = res.index;
+                        option.textContent = res.label;
+                        if (res.active) option.selected = true;
+                        resolutionSelect.appendChild(option);
+                    });
+                    // Recarrega stream
+                    const stream = document.getElementById('stream');
+                    stream.src = '/video_feed?' + new Date().getTime();
+                } else {
+                    alert('Erro ao trocar resolucao');
+                }
+            } catch (error) {
+                console.error('Erro:', error);
+            } finally {
+                resolutionSelect.disabled = false;
             }
         }
 

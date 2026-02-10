@@ -493,11 +493,45 @@ class CardDetectorONNX:
 class PiCameraManager:
     """Gerencia camera CSI via Picamera2 no Raspberry Pi"""
 
-    def __init__(self, config: DetectorConfig):
+    # Resolucoes maximas por modelo de sensor
+    SENSOR_MAX_RESOLUTION = {
+        'imx219': (3280, 2464),
+        'ov5647': (2592, 1944),
+    }
+
+    # Presets de resolucao por sensor (resolucoes nativas do sensor)
+    SENSOR_RESOLUTIONS = {
+        'imx219': [
+            {'label': '3280x2464 (Max 8MP)',      'main': (3280, 2464), 'lores': (820, 616)},
+            {'label': '1920x1080 (FHD)',           'main': (1920, 1080), 'lores': (640, 360)},
+            {'label': '1640x1232',                 'main': (1640, 1232), 'lores': (820, 616)},
+            {'label': '1080x1920 (Portrait 9:16)', 'main': (1080, 1920), 'lores': (540, 960)},
+            {'label': '640x480 (Fast)',            'main': (640, 480),   'lores': (640, 480)},
+        ],
+        'ov5647': [
+            {'label': '2592x1944 (Max 5MP)',       'main': (2592, 1944), 'lores': (648, 486)},
+            {'label': '1920x1080 (FHD)',           'main': (1920, 1080), 'lores': (640, 360)},
+            {'label': '1296x972',                  'main': (1296, 972),  'lores': (648, 486)},
+            {'label': '1080x1920 (Portrait 9:16)', 'main': (1080, 1920), 'lores': (540, 960)},
+            {'label': '640x480 (Fast)',            'main': (640, 480),   'lores': (640, 480)},
+        ],
+    }
+
+    def __init__(self, config: DetectorConfig, camera_index: int = 0, camera_model: str = 'unknown'):
         self.config = config
+        self.camera_index = camera_index
+        self.camera_model = camera_model.lower()
         self.picam2 = None
         self.lock = threading.Lock()
         self.is_running = False
+
+        # Resolve resolucao maxima baseada no sensor
+        max_res = self.SENSOR_MAX_RESOLUTION.get(self.camera_model, (3280, 2464))
+        self.max_width = max_res[0]
+        self.max_height = max_res[1]
+
+        # Resolucao atual (indice do preset) - default: 1080x1920 Portrait se disponivel, senao FHD
+        self.current_resolution_index = self._find_default_resolution_index()
 
         # Configuracoes atuais da camera (valores baseados no painel de referencia)
         self.current_config = {
@@ -525,6 +559,89 @@ class PiCameraManager:
             'vertical_flip': False
         }
 
+    def _find_default_resolution_index(self) -> int:
+        """Encontra indice do preset Portrait 1080x1920 ou FHD como fallback"""
+        resolutions = self.SENSOR_RESOLUTIONS.get(self.camera_model, [])
+        # Procura Portrait primeiro
+        for i, res in enumerate(resolutions):
+            if res['main'] == (1080, 1920):
+                return i
+        # Fallback: FHD
+        for i, res in enumerate(resolutions):
+            if res['main'] == (1920, 1080):
+                return i
+        return 0
+
+    def get_resolutions(self) -> List[dict]:
+        """Retorna lista de presets de resolucao disponiveis para este sensor"""
+        resolutions = self.SENSOR_RESOLUTIONS.get(self.camera_model, [])
+        result = []
+        for i, res in enumerate(resolutions):
+            result.append({
+                'index': i,
+                'label': res['label'],
+                'main': f"{res['main'][0]}x{res['main'][1]}",
+                'active': i == self.current_resolution_index
+            })
+        return result
+
+    def set_resolution(self, resolution_index: int) -> bool:
+        """Troca resolucao da camera (para, reconfigura e reinicia)"""
+        resolutions = self.SENSOR_RESOLUTIONS.get(self.camera_model, [])
+        if resolution_index < 0 or resolution_index >= len(resolutions):
+            print(f"Indice de resolucao invalido: {resolution_index}")
+            return False
+
+        preset = resolutions[resolution_index]
+        self.current_resolution_index = resolution_index
+
+        if not self.is_running or self.picam2 is None:
+            return True  # Salva o indice para quando iniciar
+
+        try:
+            with self.lock:
+                self.picam2.stop()
+
+                preview_config = self.picam2.create_preview_configuration(
+                    main={"size": preset['main'], "format": "RGB888"},
+                    lores={"size": preset['lores'], "format": "RGB888"},
+                    buffer_count=4
+                )
+                self.picam2.configure(preview_config)
+
+                # Reaplica controles atuais
+                self._apply_current_controls()
+
+                self.picam2.start()
+                time.sleep(0.3)
+
+            main_w, main_h = preset['main']
+            print(f"Resolucao alterada: {main_w}x{main_h} ({preset['label']})")
+            return True
+
+        except Exception as e:
+            print(f"Erro ao trocar resolucao: {e}")
+            return False
+
+    def _apply_current_controls(self):
+        """Aplica controles atuais na camera (usado apos reconfigurar)"""
+        brightness_picam = self.current_config['brightness'] / 100.0
+        controls = {
+            "Brightness": brightness_picam,
+            "Contrast": self.current_config['contrast'],
+            "Saturation": self.current_config['saturation'],
+            "Sharpness": self.current_config['sharpness'],
+            "AeEnable": self.current_config['ae_enable'],
+            "AwbEnable": self.current_config['awb_enable'],
+            "NoiseReductionMode": self.current_config['noise_reduction'],
+        }
+        if not self.current_config['ae_enable']:
+            controls["ExposureTime"] = self.current_config['exposure_time']
+            controls["AnalogueGain"] = self.current_config['analogue_gain']
+        if not self.current_config['awb_enable'] and self.current_config['colour_gains'][0] > 0:
+            controls["ColourGains"] = self.current_config['colour_gains']
+        self.picam2.set_controls(controls)
+
     def start(self) -> bool:
         """Inicia a camera CSI"""
         if not PICAMERA2_AVAILABLE:
@@ -532,38 +649,31 @@ class PiCameraManager:
             return False
 
         try:
-            self.picam2 = Picamera2()
+            self.picam2 = Picamera2(self.camera_index)
 
-            # Configura para stream (resolucao menor) + captura (resolucao alta)
+            # Resolve resolucao do preset atual
+            resolutions = self.SENSOR_RESOLUTIONS.get(self.camera_model, [])
+            if resolutions and self.current_resolution_index < len(resolutions):
+                preset = resolutions[self.current_resolution_index]
+                main_size = preset['main']
+                lores_size = preset['lores']
+            else:
+                main_size = (self.config.csi_capture_width, self.config.csi_capture_height)
+                lores_size = (self.config.stream_width, self.config.stream_height)
+
+            # Configura para stream (lores) + captura (main)
             # IMPORTANTE: Picamera2 tem nomenclatura invertida!
             # "RGB888" retorna BGR (compativel com OpenCV)
             # "BGR888" retorna RGB (incompativel com OpenCV)
             preview_config = self.picam2.create_preview_configuration(
-                main={"size": (self.config.csi_capture_width, self.config.csi_capture_height), "format": "RGB888"},
-                lores={"size": (self.config.stream_width, self.config.stream_height), "format": "RGB888"},
+                main={"size": main_size, "format": "RGB888"},
+                lores={"size": lores_size, "format": "RGB888"},
                 buffer_count=4
             )
             self.picam2.configure(preview_config)
 
-            # Configura controles (sem HorizontalFlip/VerticalFlip - nao suportados no Pi 5)
-            # Converte brilho de -100 a 100 para -1.0 a 1.0
-            brightness_picam = self.current_config['brightness'] / 100.0
-            controls = {
-                "ExposureTime": self.current_config['exposure_time'],
-                "AnalogueGain": self.current_config['analogue_gain'],
-                "Brightness": brightness_picam,
-                "Contrast": self.current_config['contrast'],
-                "Saturation": self.current_config['saturation'],
-                "Sharpness": self.current_config['sharpness'],
-                "AeEnable": self.current_config['ae_enable'],
-                "AwbEnable": self.current_config['awb_enable'],
-                "NoiseReductionMode": self.current_config['noise_reduction'],
-            }
-            # Colour gains apenas se definidos manualmente (quando AWB desligado)
-            if self.current_config['colour_gains'][0] > 0:
-                controls["ColourGains"] = self.current_config['colour_gains']
-
-            self.picam2.set_controls(controls)
+            # Aplica controles
+            self._apply_current_controls()
 
             self.picam2.start()
             self.is_running = True
@@ -571,7 +681,7 @@ class PiCameraManager:
             # Aguarda estabilizar
             time.sleep(0.5)
 
-            print(f"Camera CSI iniciada: {self.config.csi_capture_width}x{self.config.csi_capture_height}")
+            print(f"Camera CSI {self.camera_index} ({self.camera_model}) iniciada: {main_size[0]}x{main_size[1]}")
             return True
 
         except Exception as e:
@@ -642,10 +752,10 @@ class PiCameraManager:
                 # Para o stream atual
                 self.picam2.stop()
 
-                # Reconfigura para resolucao maxima
+                # Reconfigura para resolucao maxima do sensor
                 # "RGB888" retorna BGR (compativel com OpenCV)
                 still_config = self.picam2.create_still_configuration(
-                    main={"size": (self.config.csi_max_width, self.config.csi_max_height), "format": "RGB888"}
+                    main={"size": (self.max_width, self.max_height), "format": "RGB888"}
                 )
                 self.picam2.configure(still_config)
                 self.picam2.start()
@@ -827,7 +937,12 @@ class USBCameraManager:
         self.lock = threading.Lock()
 
     def list_cameras(self) -> List[Dict]:
-        """Lista cameras USB disponiveis"""
+        """Lista cameras USB disponiveis (ignora devices CSI/ISP)"""
+        if PICAMERA2_AVAILABLE:
+            # No Raspberry Pi, cameras CSI sao gerenciadas via Picamera2.
+            # Os /dev/video* sao sub-devices CSI/ISP e nao devem ser escaneados via OpenCV.
+            return []
+
         cameras = []
         for i in range(10):
             cap = cv2.VideoCapture(i)
@@ -901,32 +1016,47 @@ class USBCameraManager:
 # ============================================================================
 
 class UnifiedCameraManager:
-    """Gerencia camera CSI ou USB de forma unificada"""
+    """Gerencia cameras CSI e USB de forma unificada"""
 
     def __init__(self, config: DetectorConfig):
         self.config = config
-        self.pi_camera = None
-        self.usb_camera = None
-        self.active_camera = None  # 'csi' ou 'usb'
+        self.pi_camera = None  # PiCameraManager ativa (criada sob demanda)
+        self.usb_camera = USBCameraManager(config)
+        self.active_camera = None  # 'csi_0', 'csi_1', 'usb_0', etc.
         self.lock = threading.Lock()
 
-        # Inicializa gerenciadores
+        # Descobre cameras CSI disponiveis
+        self.csi_cameras = []  # Lista de dicts com info das cameras CSI
         if PICAMERA2_AVAILABLE:
-            self.pi_camera = PiCameraManager(config)
-        self.usb_camera = USBCameraManager(config)
+            try:
+                for cam_info in Picamera2.global_camera_info():
+                    self.csi_cameras.append({
+                        'index': cam_info['Num'],
+                        'model': cam_info.get('Model', 'unknown'),
+                        'rotation': cam_info.get('Rotation', 0),
+                    })
+                print(f"Cameras CSI detectadas: {len(self.csi_cameras)}")
+                for cam in self.csi_cameras:
+                    print(f"  CSI {cam['index']}: {cam['model']} (rotacao: {cam['rotation']}°)")
+            except Exception as e:
+                print(f"Erro ao detectar cameras CSI: {e}")
 
     def list_cameras(self) -> List[Dict]:
         """Lista todas as cameras disponiveis"""
         cameras = []
 
-        # Camera CSI (se disponivel)
-        if PICAMERA2_AVAILABLE:
+        # Cameras CSI
+        for cam in self.csi_cameras:
+            idx = cam['index']
+            model = cam['model']
+            max_res = PiCameraManager.SENSOR_MAX_RESOLUTION.get(model, (3280, 2464))
             cameras.append({
-                'id': 'csi',
-                'name': 'Camera CSI (IMX219)',
-                'resolution': f"{self.config.csi_capture_width}x{self.config.csi_capture_height}",
+                'id': f'csi_{idx}',
+                'name': f'Camera CSI {idx} ({model.upper()})',
+                'resolution': f"{max_res[0]}x{max_res[1]}",
                 'type': 'csi',
-                'active': self.active_camera == 'csi'
+                'sensor': model,
+                'active': self.active_camera == f'csi_{idx}'
             })
 
         # Cameras USB
@@ -938,17 +1068,40 @@ class UnifiedCameraManager:
         return cameras
 
     def select_camera(self, camera_id) -> bool:
-        """Seleciona camera por ID"""
+        """Seleciona camera por ID ('csi_0', 'csi_1', 'csi', 'usb_0', 0, etc.)"""
         with self.lock:
             # Para camera atual
             self.stop_current()
 
-            if camera_id == 'csi' and self.pi_camera:
+            camera_id_str = str(camera_id)
+
+            # Compatibilidade: 'csi' sem indice seleciona csi_0
+            if camera_id_str == 'csi':
+                camera_id_str = 'csi_0'
+
+            if camera_id_str.startswith('csi_'):
+                csi_index = int(camera_id_str.replace('csi_', ''))
+                # Busca info da camera CSI
+                cam_info = next((c for c in self.csi_cameras if c['index'] == csi_index), None)
+                if cam_info is None:
+                    print(f"Camera CSI {csi_index} nao encontrada")
+                    return False
+                # Cria novo PiCameraManager para esta camera
+                self.pi_camera = PiCameraManager(
+                    self.config,
+                    camera_index=csi_index,
+                    camera_model=cam_info['model']
+                )
                 if self.pi_camera.start():
-                    self.active_camera = 'csi'
+                    self.active_camera = f'csi_{csi_index}'
                     return True
-            elif isinstance(camera_id, int) or camera_id.startswith('usb_'):
-                usb_id = int(camera_id.replace('usb_', '')) if isinstance(camera_id, str) else camera_id
+                else:
+                    self.pi_camera = None
+                    return False
+
+            # Camera USB
+            if isinstance(camera_id, int) or camera_id_str.startswith('usb_'):
+                usb_id = int(camera_id_str.replace('usb_', '')) if camera_id_str.startswith('usb_') else int(camera_id)
                 if self.usb_camera.start(usb_id):
                     self.active_camera = f"usb_{usb_id}"
                     return True
@@ -957,15 +1110,16 @@ class UnifiedCameraManager:
 
     def stop_current(self):
         """Para camera atual"""
-        if self.active_camera == 'csi' and self.pi_camera:
+        if self.pi_camera and self.active_camera and self.active_camera.startswith('csi'):
             self.pi_camera.stop()
+            self.pi_camera = None
         elif self.active_camera and self.active_camera.startswith('usb'):
             self.usb_camera.stop()
         self.active_camera = None
 
     def read_stream(self) -> Optional[np.ndarray]:
         """Le frame para stream"""
-        if self.active_camera == 'csi' and self.pi_camera:
+        if self.pi_camera and self.active_camera and self.active_camera.startswith('csi'):
             return self.pi_camera.read_stream()
         elif self.active_camera and self.active_camera.startswith('usb'):
             return self.usb_camera.read_stream()
@@ -973,7 +1127,7 @@ class UnifiedCameraManager:
 
     def read_hd(self) -> Optional[np.ndarray]:
         """Le frame HD"""
-        if self.active_camera == 'csi' and self.pi_camera:
+        if self.pi_camera and self.active_camera and self.active_camera.startswith('csi'):
             return self.pi_camera.read_hd()
         elif self.active_camera and self.active_camera.startswith('usb'):
             return self.usb_camera.read_hd()
@@ -981,16 +1135,18 @@ class UnifiedCameraManager:
 
     def capture_max_resolution(self) -> Optional[np.ndarray]:
         """Captura em resolucao maxima (apenas CSI)"""
-        if self.active_camera == 'csi' and self.pi_camera:
+        if self.pi_camera and self.active_camera and self.active_camera.startswith('csi'):
             return self.pi_camera.capture_full_resolution()
         return self.read_hd()
 
     def get_camera_config(self) -> dict:
         """Retorna configuracao da camera atual"""
-        if self.active_camera == 'csi' and self.pi_camera:
+        if self.pi_camera and self.active_camera and self.active_camera.startswith('csi'):
             config = self.pi_camera.get_config()
             return {
                 'type': 'csi',
+                'camera_index': self.pi_camera.camera_index,
+                'camera_model': self.pi_camera.camera_model,
                 # Toggles
                 'ae_enable': config['ae_enable'],
                 'awb_enable': config['awb_enable'],
@@ -1019,7 +1175,7 @@ class UnifiedCameraManager:
 
     def set_camera_config(self, config: dict) -> bool:
         """Aplica configuracao na camera"""
-        if self.active_camera == 'csi' and self.pi_camera:
+        if self.pi_camera and self.active_camera and self.active_camera.startswith('csi'):
             try:
                 # Toggles
                 if 'ae_enable' in config:
@@ -1069,6 +1225,18 @@ class UnifiedCameraManager:
                 return True
             except Exception as e:
                 print(f"Erro ao configurar camera: {e}")
+        return False
+
+    def get_resolutions(self) -> List[dict]:
+        """Retorna presets de resolucao para a camera ativa"""
+        if self.pi_camera and self.active_camera and self.active_camera.startswith('csi'):
+            return self.pi_camera.get_resolutions()
+        return []
+
+    def set_resolution(self, resolution_index: int) -> bool:
+        """Aplica preset de resolucao na camera ativa"""
+        if self.pi_camera and self.active_camera and self.active_camera.startswith('csi'):
+            return self.pi_camera.set_resolution(resolution_index)
         return False
 
     def stop(self):
@@ -1550,6 +1718,25 @@ def set_camera(camera_id):
         capture_thread = CaptureThread(camera_manager, config).start()
 
     return jsonify({'success': success, 'camera_id': str(camera_id)})
+
+
+@app.route('/camera/resolutions')
+def get_resolutions():
+    """Lista presets de resolucao disponiveis"""
+    resolutions = camera_manager.get_resolutions()
+    return jsonify(resolutions)
+
+
+@app.route('/camera/resolution', methods=['POST'])
+def set_resolution():
+    """Aplica preset de resolucao"""
+    data = request.get_json() or {}
+    index = data.get('index', 0)
+    success = camera_manager.set_resolution(int(index))
+    return jsonify({
+        'success': success,
+        'resolutions': camera_manager.get_resolutions()
+    })
 
 
 @app.route('/stats')
